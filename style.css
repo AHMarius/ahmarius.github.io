@@ -183,3 +183,32 @@ nav {
         flex-direction: column;
     }
 }
+.api-section {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin: 60px 20px;
+    flex-wrap: wrap;
+}
+
+.info-box {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    border-radius: 15px;
+    padding: 25px;
+    width: 280px;
+    color: white;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    transition: transform 0.3s ease;
+}
+
+.info-box:hover {
+    transform: translateY(-5px);
+}
+
+.info-box h2 {
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+    padding-bottom: 8px;
+}
