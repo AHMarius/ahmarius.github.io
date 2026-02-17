@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // ==============================
     // GitHub API
     // ==============================
-    fetch("https://api.github.com/users/ahmarius")
+    fetch("https://api.github.com/users/AHMarius")
         .then(response => response.json())
         .then(data => {
             document.getElementById("ghUser").innerText = data.login;
