@@ -1,3 +1,32 @@
+/* ===== VARIABLES ===== */
+:root {
+    --color-bg-body: #e3e3de;       /* very light background */
+    --color-bg-navbar: #c3c5c1cb;     /* slightly darker navbar */
+    --color-bg-api: rgba(207, 210, 205, 0.8); /* semi-transparent API box */
+    --color-primary: #e6e0e0;       /* main accent color for titles/buttons */
+    --color-accent: #847577;        /* hover / highlights */
+    --color-secondary: #cfd2cd;     /* secondary borders/buttons */
+    --color-text: #847577;          /* main text color */
+    --color-text-light: #a6a2a2;    /* lighter text for paragraphs */
+    --color-link: #847577;          /* link color */
+    --color-link-hover: var(--color-accent);  /* link hover color */
+    --color-box-border: rgba(132, 117, 119, 0.2); /* subtle box border */
+    --color-box-shadow: rgba(0, 0, 0, 0.15);      /* shadow for boxes */
+}
+
+/* ===== BACKGROUND VIDEO ===== */
+#bgVideo {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* cover whole screen */
+    z-index: -1;       /* behind all content */
+    filter: brightness(0.5); /* optional: darken video for readability */
+}
+
+
 /* ===== RESET ===== */
 * {
     margin: 0;
@@ -11,8 +40,8 @@ html {
 }
 
 body {
-    background-color: #000;
-    color: #f2f2f2;
+    background-color: var(--color-bg-body);
+    color: var(--color-text);
 }
 
 /* ===== NAVBAR ===== */
@@ -23,8 +52,8 @@ nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #0a0a0a;
-    border-bottom: 1px solid rgba(225, 6, 0, 0.15);
+    background: var(--color-bg-navbar);
+    border-bottom: 1px solid rgba(255, 195, 0, 0.15);
     z-index: 1000;
 }
 
@@ -32,6 +61,7 @@ nav {
     font-size: 18px;
     font-weight: 600;
     letter-spacing: 4px;
+    color: var(--color-primary);
 }
 
 /* ===== NAV LINKS ===== */
@@ -43,15 +73,15 @@ nav {
 
 .nav-links a {
     text-decoration: none;
-    color: #aaa;
-    font-size: 0.9rem;
+    color: var(--color-link);
+    font-size: 0.95rem;
     letter-spacing: 1px;
     position: relative;
     transition: 0.3s ease;
 }
 
 .nav-links a:hover {
-    color: #e10600;
+    color: var(--color-link-hover);
 }
 
 .nav-links a::after {
@@ -61,7 +91,7 @@ nav {
     left: 0;
     width: 0%;
     height: 2px;
-    background: #e10600;
+    background: var(--color-link-hover);
     transition: 0.3s ease;
 }
 
@@ -75,21 +105,22 @@ nav {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: center;
-    padding: 20px;
-    text-align: center;
+    align-items: flex-end; /* stick content to the right */
+    padding: 20px 60px;
+    text-align: right;
 }
 
 .hero h1 {
     font-size: 4rem;
     font-weight: 700;
+    color: var(--color-primary);
     margin-bottom: 20px;
 }
 
 .hero p {
     max-width: 650px;
-    font-size: 1.1rem;
-    color: #aaa;
+    font-size: 1.2rem;
+    color: var(--color-text-light);
     margin-bottom: 40px;
     line-height: 1.6;
 }
@@ -102,33 +133,33 @@ nav {
 
 .primary-btn {
     padding: 14px 40px;
-    border: 2px solid #e10600;
+    border: 2px solid var(--color-primary);
     background: transparent;
-    color: #e10600;
+    color: var(--color-primary);
     border-radius: 40px;
     cursor: pointer;
     transition: 0.3s ease;
 }
 
 .primary-btn:hover {
-    background: #e10600;
-    color: #000;
-    box-shadow: 0 0 20px rgba(225, 6, 0, 0.4);
+    background: var(--color-primary);
+    color: var(--color-bg-navbar);
+    box-shadow: 0 0 20px rgba(255, 195, 0, 0.4);
 }
 
 .secondary-btn {
     padding: 14px 40px;
-    border: 2px solid #333;
-    background: #111;
-    color: #ccc;
+    border: 2px solid var(--color-secondary);
+    background: var(--color-bg-navbar);
+    color: var(--color-text-light);
     border-radius: 40px;
     cursor: pointer;
     transition: 0.3s ease;
 }
 
 .secondary-btn:hover {
-    border-color: #e10600;
-    color: #e10600;
+    border-color: var(--color-accent);
+    color: var(--color-accent);
 }
 
 /* ===== HAMBURGER ===== */
@@ -142,7 +173,7 @@ nav {
 .hamburger span {
     width: 25px;
     height: 2px;
-    background: #fff;
+    background: var(--color-accent);
 }
 
 /* ===== MOBILE ===== */
@@ -159,12 +190,12 @@ nav {
         height: 100vh;
         width: 220px;
         flex-direction: column;
-        background: #0a0a0a;
+        background: var(--color-bg-navbar);
         padding-top: 60px;
         gap: 30px;
         transform: translateX(100%);
         transition: 0.4s ease;
-        border-left: 1px solid rgba(225, 6, 0, 0.2);
+        border-left: 1px solid rgba(255, 195, 0, 0.2);
     }
 
     .nav-links.active {
@@ -175,6 +206,11 @@ nav {
         display: flex;
     }
 
+    .hero {
+        align-items: center;
+        text-align: center;
+    }
+
     .hero h1 {
         font-size: 2.5rem;
     }
@@ -183,35 +219,36 @@ nav {
         flex-direction: column;
     }
 }
+
 /* ===== API SECTION ===== */
 .api-section {
     display: flex;
-    flex-direction: column; /* vertical stack */
+    flex-direction: column;
     gap: 25px;
-    position: fixed;       /* fix on left side */
-    top: 120px;            /* below navbar */
+    position: fixed;
+    top: 120px;
     left: 20px;
     max-width: 280px;
 }
 
 .info-box {
-    background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px);
+    background: var(--color-bg-api);
+    backdrop-filter: blur(8px);
     border-radius: 15px;
     padding: 20px;
-    color: white;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    color: var(--color-accent);
+    box-shadow: 0 8px 20px var(--color-box-shadow);
     transition: transform 0.3s ease;
 }
 
 .info-box:hover {
-    transform: translateX(5px); /* subtle horizontal hover */
+    transform: translateX(5px);
 }
 
 .info-box h2 {
     margin-bottom: 12px;
     font-size: 1.2rem;
-    border-bottom: 1px solid rgba(255,255,255,0.2);
+    border-bottom: 1px solid var(--color-box-border);
     padding-bottom: 6px;
 }
 
