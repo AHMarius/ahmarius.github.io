@@ -30,33 +30,34 @@
     --color-card-border: rgba(255,255,255,0.45);
 
     /* Status */
-    --status-finished: #467c39;
-    --status-finished-bg: rgba(70,124,57,0.16);
+    /* ===== STATUS ===== */
+--status-finished: #b7f5a9;
+--status-finished-bg: rgba(43, 116, 52, 0.75);
 
-    --status-unfinished: #b5533d;
-    --status-unfinished-bg: rgba(181,83,61,0.16);
+--status-unfinished: #ffd2c7;
+--status-unfinished-bg: rgba(156, 63, 46, 0.75);
 
-    --status-ongoing: #2f6fa5;
-    --status-ongoing-bg: rgba(47,111,165,0.16);
+--status-ongoing: #c8e6ff;
+--status-ongoing-bg: rgba(38, 91, 150, 0.75);
 
-    --status-planning: #8751a0;
-    --status-planning-bg: rgba(135,81,160,0.16);
+--status-planning: #efd4ff;
+--status-planning-bg: rgba(116, 66, 145, 0.75);
 
-    /* Tags */
-    --tag-lang: #255b7a;
-    --tag-lang-bg: rgba(37,91,122,0.14);
+/* ===== TAGS ===== */
+--tag-lang: #d6efff;
+--tag-lang-bg: rgba(26, 84, 130, 0.68);
 
-    --tag-tool: #34632d;
-    --tag-tool-bg: rgba(52,99,45,0.14);
+--tag-tool: #d8ffd3;
+--tag-tool-bg: rgba(42, 104, 45, 0.68);
 
-    --tag-type: #6b3d82;
-    --tag-type-bg: rgba(107,61,130,0.14);
+--tag-type: #f2ddff;
+--tag-type-bg: rgba(97, 48, 123, 0.68);
 
-    --tag-concept: #9b6110;
-    --tag-concept-bg: rgba(155,97,16,0.14);
+--tag-concept: #ffe4b8;
+--tag-concept-bg: rgba(145, 88, 15, 0.68);
 
-    --tag-misc: #54494b;
-    --tag-misc-bg: rgba(84,73,75,0.12);
+--tag-misc: #f5ecee;
+--tag-misc-bg: rgba(82, 71, 73, 0.68);
 }
 
 /* ===== BACKGROUND VIDEO ===== */
