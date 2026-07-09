@@ -89,16 +89,7 @@ body {
     background-color: var(--color-bg-body);
     color: var(--color-text);
 }
-body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
 
-    background: rgba(0, 0, 0, 0.68);
-
-    z-index: -1;
-    pointer-events: none;
-}
 /* ===== NAVBAR (home page) ===== */
 nav {
     position: fixed;
