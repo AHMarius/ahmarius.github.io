@@ -1,33 +1,43 @@
 /* ===== VARIABLES ===== */
 :root {
-    --color-bg-body: #e3e3de;       /* very light background */
-    --color-bg-navbar: #c3c5c1cb;     /* slightly darker navbar */
-    --color-bg-api: rgba(207, 210, 205, 0.8); /* semi-transparent API box */
-    --color-primary: #e6e0e0;       /* main accent color for titles/buttons */
-    --color-accent: #847577;        /* hover / highlights */
-    --color-secondary: #cfd2cd;     /* secondary borders/buttons */
-    --color-text: #847577;          /* main text color */
-    --color-text-light: #a6a2a2;    /* lighter text for paragraphs */
-    --color-link: #847577;          /* link color */
-    --color-link-hover: var(--color-accent);  /* link hover color */
-    --color-box-border: rgba(132, 117, 119, 0.2); /* subtle box border */
-    --color-box-shadow: rgba(0, 0, 0, 0.15);      /* shadow for boxes */
+    --color-bg-body: #e3e3de;
+    --color-bg-navbar: #c3c5c1cb;
+    --color-bg-api: rgba(207, 210, 205, 0.8);
+    --color-primary: #e6e0e0;
+    --color-accent: #847577;
+    --color-secondary: #cfd2cd;
+    --color-text: #847577;
+    --color-text-light: #a6a2a2;
+    --color-link: #847577;
+    --color-link-hover: var(--color-accent);
+    --color-box-border: rgba(132, 117, 119, 0.2);
+    --color-box-shadow: rgba(0, 0, 0, 0.15);
 
-    /* card / status system, kept inside the same muted palette */
+    /* project card system */
     --color-card-bg: rgba(230, 224, 224, 0.55);
-    --color-card-bg-hover: rgba(230, 224, 224, 0.85);
+    --color-card-bg-hover: rgba(233, 228, 228, 0.92);
     --color-card-border: rgba(132, 117, 119, 0.18);
-    --color-tag-bg: rgba(207, 210, 205, 0.9);
-    --color-tag-text: #6c5f61;
 
-    --status-finished: #7c9473;
-    --status-finished-bg: rgba(124, 148, 115, 0.15);
-    --status-unfinished: #b17b6b;
-    --status-unfinished-bg: rgba(177, 123, 107, 0.15);
-    --status-ongoing: #6b8ca8;
-    --status-ongoing-bg: rgba(107, 140, 168, 0.15);
-    --status-planning: #a68bb0;
-    --status-planning-bg: rgba(166, 139, 176, 0.15);
+    --status-finished: #6f9a63;
+    --status-finished-bg: rgba(111, 154, 99, 0.16);
+    --status-unfinished: #bb6f56;
+    --status-unfinished-bg: rgba(187, 111, 86, 0.16);
+    --status-ongoing: #5c8ab0;
+    --status-ongoing-bg: rgba(92, 138, 176, 0.16);
+    --status-planning: #a172ad;
+    --status-planning-bg: rgba(161, 114, 173, 0.16);
+
+    /* tag categories - muted but distinct hues */
+    --tag-lang: #3f6f8f;
+    --tag-lang-bg: rgba(63, 111, 143, 0.14);
+    --tag-tool: #4f7d47;
+    --tag-tool-bg: rgba(79, 125, 71, 0.14);
+    --tag-type: #7a4f8a;
+    --tag-type-bg: rgba(122, 79, 138, 0.14);
+    --tag-concept: #a5701f;
+    --tag-concept-bg: rgba(165, 112, 31, 0.15);
+    --tag-misc: #6c5f61;
+    --tag-misc-bg: rgba(108, 95, 97, 0.12);
 }
 
 /* ===== BACKGROUND VIDEO ===== */
@@ -37,11 +47,10 @@
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover; /* cover whole screen */
-    z-index: -1;       /* behind all content */
-    filter: brightness(0.5); /* optional: darken video for readability */
+    object-fit: cover;
+    z-index: -1;
+    filter: brightness(0.5);
 }
-
 
 /* ===== RESET ===== */
 * {
@@ -80,7 +89,6 @@ nav {
     color: var(--color-primary);
 }
 
-/* ===== NAV LINKS ===== */
 .nav-links {
     list-style: none;
     display: flex;
@@ -121,7 +129,7 @@ nav {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: flex-end; /* stick content to the right */
+    align-items: flex-end;
     padding: 20px 60px;
     text-align: right;
 }
@@ -141,7 +149,6 @@ nav {
     line-height: 1.6;
 }
 
-/* ===== BUTTONS ===== */
 .hero-buttons {
     display: flex;
     gap: 20px;
@@ -178,7 +185,6 @@ nav {
     color: var(--color-accent);
 }
 
-/* ===== HAMBURGER (home page) ===== */
 .hamburger {
     display: none;
     flex-direction: column;
@@ -192,9 +198,7 @@ nav {
     background: var(--color-accent);
 }
 
-/* ===== MOBILE (home page) ===== */
 @media (max-width: 768px) {
-
     nav {
         padding: 20px 30px;
     }
@@ -268,7 +272,6 @@ nav {
     padding-bottom: 6px;
 }
 
-/* ===== RESPONSIVE (api section) ===== */
 @media (max-width: 768px) {
     .api-section {
         position: static;
@@ -286,7 +289,7 @@ nav {
  * PROJECTS PAGE
  * ==================================================================== */
 
-/* ===== TOP NAV (Twitter-card style header) ===== */
+/* ===== TOP NAV ===== */
 .topnav {
     position: fixed;
     top: 0;
@@ -400,12 +403,12 @@ nav {
 
 /* ===== PROJECT FEED ===== */
 .project-feed {
-    max-width: 880px;
+    max-width: 860px;
     margin: 0 auto;
     padding: 0 24px 100px;
     display: flex;
     flex-direction: column;
-    gap: 26px;
+    gap: 22px;
 }
 
 .section-intro {
@@ -418,37 +421,67 @@ nav {
     font-style: italic;
 }
 
-/* ===== PROJECT CARD (collapsed by default, hover to expand) ===== */
+/* ===== PROJECT CARD =====
+   Collapsed: header + status/date badges + a single scrollable
+   row of tags. Hover/focus unfolds the whole card open to reveal
+   the description, gallery, extra details and action buttons. */
 .project-card {
+    position: relative;
     background: var(--color-card-bg);
     backdrop-filter: blur(10px);
     border: 1px solid var(--color-card-border);
     border-radius: 18px;
-    padding: 22px 28px;
+    padding: 20px 26px;
     box-shadow: 0 6px 16px var(--color-box-shadow);
     cursor: pointer;
-    transition: background 0.4s ease, box-shadow 0.4s ease, transform 0.35s ease, border-color 0.4s ease;
+
+    max-height: 128px;
+    overflow: hidden;
+
+    transition: max-height 0.55s cubic-bezier(0.65, 0, 0.35, 1),
+                background 0.4s ease,
+                box-shadow 0.4s ease,
+                transform 0.35s ease,
+                border-color 0.4s ease;
+}
+
+.project-card::after {
+    content: "hover to expand \2193";
+    position: absolute;
+    right: 26px;
+    bottom: 10px;
+    font-size: 0.68rem;
+    letter-spacing: 0.5px;
+    color: var(--color-text-light);
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
 }
 
 .project-card:hover,
 .project-card:focus-within {
+    max-height: 2600px;
     background: var(--color-card-bg-hover);
-    box-shadow: 0 14px 34px var(--color-box-shadow);
+    box-shadow: 0 16px 36px var(--color-box-shadow);
     transform: translateY(-3px);
     border-color: var(--color-accent);
+}
+
+.project-card:hover::after,
+.project-card:focus-within::after {
+    opacity: 0;
 }
 
 /* header row: avatar + title/badges, always visible */
 .card-header {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
 }
 
 .card-avatar {
     flex: 0 0 auto;
-    width: 46px;
-    height: 46px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     background: linear-gradient(135deg, var(--color-secondary), var(--color-accent));
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25);
@@ -463,7 +496,7 @@ nav {
 }
 
 .project-title {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 600;
     color: var(--color-accent);
     display: flex;
@@ -496,6 +529,7 @@ nav {
     letter-spacing: 0.5px;
     padding: 4px 12px;
     border-radius: 20px;
+    white-space: nowrap;
 }
 
 .badge-date {
@@ -523,83 +557,107 @@ nav {
     color: var(--status-planning);
 }
 
-/* tags: always visible, part of the "collapsed" state */
+/* ===== TAG BUBBLES =====
+   Always visible, always a single horizontal line (scrolls
+   sideways if there are more tags than fit), color-coded by
+   what kind of tag it is. */
 .tag-bubbles {
     list-style: none;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: 8px;
     margin-top: 14px;
-    padding-left: 62px; /* aligns under the title, past the avatar */
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-accent) transparent;
+    padding-bottom: 6px;
+}
+
+.tag-bubbles::-webkit-scrollbar {
+    height: 5px;
+}
+
+.tag-bubbles::-webkit-scrollbar-thumb {
+    background: var(--color-accent);
+    border-radius: 10px;
+    opacity: 0.5;
 }
 
 .tag-bubble {
+    flex: 0 0 auto;
     font-size: 0.72rem;
-    font-weight: 500;
+    font-weight: 600;
     letter-spacing: 0.3px;
-    padding: 5px 12px;
+    padding: 5px 13px;
     border-radius: 20px;
-    background: var(--color-tag-bg);
-    color: var(--color-tag-text);
-    border: 1px solid var(--color-box-border);
     white-space: nowrap;
+    background: var(--tag-misc-bg);
+    color: var(--tag-misc);
+    border: 1px solid transparent;
 }
 
-/* ===== COLLAPSIBLE CONTENT (description, gallery, actions, details) ===== */
-.project-description,
-.project-gallery,
-.project-actions,
-.project-details {
-    max-height: 0;
-    opacity: 0;
-    overflow: hidden;
-    margin-top: 0;
-    padding-left: 62px;
-    transition: max-height 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.45s ease,
-                margin-top 0.6s ease;
+/* languages */
+.tag-csharp, .tag-java, .tag-cpp, .tag-kotlin, .tag-python, .tag-vhdl {
+    background: var(--tag-lang-bg);
+    color: var(--tag-lang);
 }
 
-.project-card:hover .project-description,
-.project-card:focus-within .project-description,
-.project-card:hover .project-actions,
-.project-card:focus-within .project-actions,
-.project-card:hover .project-details,
-.project-card:focus-within .project-details {
-    max-height: 1200px;
-    opacity: 1;
-    margin-top: 16px;
+/* tools / platforms / frameworks */
+.tag-unity, .tag-raylib, .tag-sdl, .tag-oracle, .tag-database,
+.tag-sqlite, .tag-android, .tag-mobile, .tag-vivado, .tag-fpga,
+.tag-basys3, .tag-digital-logic, .tag-osm, .tag-api, .tag-db,
+.tag-easybmp {
+    background: var(--tag-tool-bg);
+    color: var(--tag-tool);
 }
 
-.project-card:hover .project-gallery,
-.project-card:focus-within .project-gallery {
-    max-height: 900px;
-    opacity: 1;
-    margin-top: 18px;
+/* architecture / project type */
+.tag-singleplayer, .tag-multiplayer, .tag-team, .tag-server-client,
+.tag-server, .tag-game, .tag-game-engine, .tag-game-dev, .tag-oop,
+.tag-design-patterns, .tag-scene-management, .tag-save-system,
+.tag-shaders, .tag-cli, .tag-ipc, .tag-parallel, .tag-database-application {
+    background: var(--tag-type-bg);
+    color: var(--tag-type);
 }
 
+/* concepts / algorithms / fields */
+.tag-physics, .tag-2d, .tag-collisions, .tag-graphics, .tag-simulation,
+.tag-ai, .tag-aco, .tag-genetic, .tag-graphs, .tag-optimization,
+.tag-routing, .tag-research, .tag-fluid-dynamics, .tag-graphing,
+.tag-uml, .tag-software-engineering, .tag-erasmus {
+    background: var(--tag-concept-bg);
+    color: var(--tag-concept);
+}
+
+/* ===== COLLAPSIBLE BODY CONTENT ===== */
 .project-description {
     font-size: 0.96rem;
     line-height: 1.75;
     color: var(--color-text-light);
-    max-width: 680px;
-    text-wrap: pretty;
-    word-wrap: break-word;
+    margin-top: 18px;
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: auto;
 }
 
 .project-description + .project-description {
     margin-top: 10px;
 }
 
-/* ===== PROJECT DETAILS (expanded extras for large projects) ===== */
+.project-gallery {
+    margin-top: 18px;
+}
+
 .project-details {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
+    margin-top: 18px;
 }
 
 .detail-section h3 {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--color-accent);
@@ -613,6 +671,7 @@ nav {
     font-size: 0.92rem;
     line-height: 1.7;
     color: var(--color-text-light);
+    overflow-wrap: break-word;
 }
 
 .detail-section ul {
@@ -633,6 +692,7 @@ nav {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+    margin-top: 20px;
 }
 
 .link-btn {
@@ -653,10 +713,10 @@ nav {
     box-shadow: 0 4px 14px var(--color-box-shadow);
 }
 
-/* ===== GALLERY CAROUSEL (re-themed to match the card design) ===== */
+/* ===== GALLERY CAROUSEL (re-themed) ===== */
 .project-gallery.carousel {
     width: 100%;
-    max-width: 460px;
+    max-width: 440px;
     margin: 0;
     display: flex;
     align-items: center;
@@ -665,6 +725,7 @@ nav {
 
 .carousel-viewport {
     flex: 1 1 auto;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -673,7 +734,6 @@ nav {
     border-radius: 14px;
     background: rgba(0, 0, 0, 0.08);
     border: 1px solid var(--color-box-border);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .carousel-viewport .gallery-image {
@@ -689,9 +749,9 @@ nav {
     color: var(--color-primary);
     border: none;
     border-radius: 50%;
-    width: 2.3rem;
-    height: 2.3rem;
-    font-size: 1.3rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1.25rem;
     line-height: 1;
     cursor: pointer;
     display: flex;
@@ -779,33 +839,20 @@ footer {
 
     .project-card {
         padding: 18px 18px;
+        max-height: none; /* no reliable hover on touch: keep cards open */
+    }
+
+    .project-card::after {
+        display: none;
     }
 
     .card-avatar {
-        width: 38px;
-        height: 38px;
-    }
-
-    .tag-bubbles,
-    .project-description,
-    .project-gallery,
-    .project-actions,
-    .project-details {
-        padding-left: 0;
+        width: 36px;
+        height: 36px;
     }
 
     .project-title {
-        font-size: 1.08rem;
-    }
-
-    /* hover doesn't exist reliably on touch — keep cards fully expanded */
-    .project-description,
-    .project-gallery,
-    .project-actions,
-    .project-details {
-        max-height: none;
-        opacity: 1;
-        margin-top: 14px;
+        font-size: 1.05rem;
     }
 
     .project-gallery.carousel {
