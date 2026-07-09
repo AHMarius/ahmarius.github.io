@@ -158,10 +158,19 @@ nav {
     margin-bottom: 40px;
     line-height: 1.6;
 }
+.hero h1,
+.hero p,
+.hero-subtitle,
+.hero-stats,
+.hero-buttons{
+    max-width:650px;
+}
 
-.hero-buttons {
-    display: flex;
-    gap: 20px;
+.hero-buttons{
+    display:flex;
+    gap:20px;
+    justify-content:flex-end;
+    width:100%;
 }
 
 .primary-btn {
@@ -854,7 +863,9 @@ nav {
 
 .hero-stats{
     display:flex;
-    gap:40px;
+    gap:30px;
+    justify-content:flex-end;
+    align-self:flex-end;
     margin-bottom:45px;
 }
 
