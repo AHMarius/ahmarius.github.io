@@ -11,12 +11,13 @@
     --color-link: #847577;
     --color-link-hover: var(--color-accent);
     --color-box-border: rgba(132, 117, 119, 0.2);
-    --color-box-shadow: rgba(0, 0, 0, 0.15);
+    --color-box-shadow: rgba(0, 0, 0, 0.22);
 
     /* project card system */
-    --color-card-bg: rgba(230, 224, 224, 0.55);
-    --color-card-bg-hover: rgba(233, 228, 228, 0.92);
-    --color-card-border: rgba(132, 117, 119, 0.18);
+    --color-card-bg: rgba(255,255,255,0.12);
+    --color-card-bg-hover: rgba(255,255,255,0.18);
+    --color-card-border: rgba(255,255,255,0.22);
+
 
     --status-finished: #6f9a63;
     --status-finished-bg: rgba(111, 154, 99, 0.16);
@@ -49,7 +50,7 @@
     height: 100%;
     object-fit: cover;
     z-index: -1;
-    filter: brightness(0.5);
+    filter: brightness(0.7) saturate(1.15);
 }
 
 /* ===== RESET ===== */
@@ -427,50 +428,86 @@ nav {
    the description, gallery, extra details and action buttons. */
 .project-card {
     position: relative;
-    background: var(--color-card-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--color-card-border);
+
+    /* Glass */
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+
+    /* Frosted border */
+    border: 1px solid rgba(255, 255, 255, 0.22);
+
     border-radius: 18px;
     padding: 20px 26px;
-    box-shadow: 0 6px 16px var(--color-box-shadow);
+
+    /* Better glass shadow */
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+
     cursor: pointer;
 
     max-height: 128px;
     overflow: hidden;
 
-    transition: max-height 0.55s cubic-bezier(0.65, 0, 0.35, 1),
-                background 0.4s ease,
-                box-shadow 0.4s ease,
-                transform 0.35s ease,
-                border-color 0.4s ease;
+    transition:
+        max-height 0.55s cubic-bezier(0.65, 0, 0.35, 1),
+        background 0.35s ease,
+        backdrop-filter 0.35s ease,
+        transform 0.35s ease,
+        box-shadow 0.35s ease,
+        border-color 0.35s ease;
+}
+
+.project-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+
+    /* subtle glossy highlight */
+    background: linear-gradient(
+        135deg,
+        rgba(255,255,255,.22) 0%,
+        rgba(255,255,255,.08) 25%,
+        rgba(255,255,255,0) 55%
+    );
 }
 
 .project-card::after {
-    content: "hover to expand \2193";
+    content: "hover to expand ↓";
     position: absolute;
     right: 26px;
     bottom: 10px;
     font-size: 0.68rem;
     letter-spacing: 0.5px;
-    color: var(--color-text-light);
-    opacity: 0.8;
-    transition: opacity 0.3s ease;
+    color: rgba(255,255,255,.75);
+    transition: opacity .3s ease;
 }
 
 .project-card:hover,
 .project-card:focus-within {
     max-height: 2600px;
-    background: var(--color-card-bg-hover);
-    box-shadow: 0 16px 36px var(--color-box-shadow);
-    transform: translateY(-3px);
-    border-color: var(--color-accent);
+
+    background: rgba(255,255,255,.18);
+
+    backdrop-filter: blur(28px) saturate(200%);
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+
+    border-color: rgba(255,255,255,.35);
+
+    transform: translateY(-5px);
+
+    box-shadow:
+        0 18px 45px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.28);
 }
 
 .project-card:hover::after,
 .project-card:focus-within::after {
     opacity: 0;
 }
-
 /* header row: avatar + title/badges, always visible */
 .card-header {
     display: flex;
