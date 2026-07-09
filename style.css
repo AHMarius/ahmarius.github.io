@@ -14,9 +14,9 @@
     --color-box-shadow: rgba(0, 0, 0, 0.22);
 
     /* project card system */
-    --color-card-bg: rgba(255,255,255,0.12);
-    --color-card-bg-hover: rgba(255,255,255,0.18);
-    --color-card-border: rgba(255,255,255,0.22);
+    --color-card-bg: rgba(255,255,255,0.2);
+    --color-card-bg-hover: rgba(255,255,255,0.25);
+    --color-card-border: rgba(255,255,255,0.3);
 
 
     --status-finished: #6f9a63;
