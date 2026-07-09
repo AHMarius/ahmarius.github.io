@@ -78,7 +78,7 @@ body::before {
 
     background: rgba(20, 18, 16, 0.45);
 
-    z-index: 0;
+    z-index: -1;
     pointer-events: none;
 }
 /* ===== NAVBAR (home page) ===== */
@@ -143,6 +143,8 @@ nav {
     flex-direction:column;
     justify-content:center;
     align-items:flex-end;
+    position: relative;
+    z-index: 1;
 }
 
 .hero h1 {
