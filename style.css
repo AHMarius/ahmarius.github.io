@@ -491,7 +491,7 @@ nav {
 .project-card:focus-within {
     max-height: 2600px;
 
-    background: rgba(255,255,255,.18);
+    background: rgba(255,255,255,.3);
 
     backdrop-filter: blur(28px) saturate(200%);
     -webkit-backdrop-filter: blur(28px) saturate(200%);
