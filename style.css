@@ -135,14 +135,13 @@ nav {
 }
 
 /* ===== HERO ===== */
-.hero {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: flex-end;
-    padding: 20px 60px;
-    text-align: right;
+.hero{
+    min-height:100vh;
+    padding:120px 60px 60px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:flex-end;
 }
 
 .hero h1 {
@@ -967,7 +966,7 @@ footer {
     .detail-section ul {
         grid-template-columns: 1fr;
     }
-    hero-photo{
+    .hero-photo{
     width:140px;
     height:140px;
 }
