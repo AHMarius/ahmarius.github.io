@@ -67,6 +67,7 @@ html {
 }
 
 body {
+    position:relative;
     background-color: var(--color-bg-body);
     color: var(--color-text);
 }
