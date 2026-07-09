@@ -69,7 +69,7 @@
     object-fit: cover;
     z-index: -2;
      pointer-events: none;
-    filter: brightness(0.35)
+    filter: brightness(0.55)
 }
 
 /* ===== RESET ===== */
