@@ -12,6 +12,22 @@
     --color-link-hover: var(--color-accent);  /* link hover color */
     --color-box-border: rgba(132, 117, 119, 0.2); /* subtle box border */
     --color-box-shadow: rgba(0, 0, 0, 0.15);      /* shadow for boxes */
+
+    /* card / status system, kept inside the same muted palette */
+    --color-card-bg: rgba(230, 224, 224, 0.55);
+    --color-card-bg-hover: rgba(230, 224, 224, 0.85);
+    --color-card-border: rgba(132, 117, 119, 0.18);
+    --color-tag-bg: rgba(207, 210, 205, 0.9);
+    --color-tag-text: #6c5f61;
+
+    --status-finished: #7c9473;
+    --status-finished-bg: rgba(124, 148, 115, 0.15);
+    --status-unfinished: #b17b6b;
+    --status-unfinished-bg: rgba(177, 123, 107, 0.15);
+    --status-ongoing: #6b8ca8;
+    --status-ongoing-bg: rgba(107, 140, 168, 0.15);
+    --status-planning: #a68bb0;
+    --status-planning-bg: rgba(166, 139, 176, 0.15);
 }
 
 /* ===== BACKGROUND VIDEO ===== */
@@ -44,7 +60,7 @@ body {
     color: var(--color-text);
 }
 
-/* ===== NAVBAR ===== */
+/* ===== NAVBAR (home page) ===== */
 nav {
     position: fixed;
     width: 100%;
@@ -162,7 +178,7 @@ nav {
     color: var(--color-accent);
 }
 
-/* ===== HAMBURGER ===== */
+/* ===== HAMBURGER (home page) ===== */
 .hamburger {
     display: none;
     flex-direction: column;
@@ -176,7 +192,7 @@ nav {
     background: var(--color-accent);
 }
 
-/* ===== MOBILE ===== */
+/* ===== MOBILE (home page) ===== */
 @media (max-width: 768px) {
 
     nav {
@@ -252,7 +268,7 @@ nav {
     padding-bottom: 6px;
 }
 
-/* ===== RESPONSIVE ===== */
+/* ===== RESPONSIVE (api section) ===== */
 @media (max-width: 768px) {
     .api-section {
         position: static;
@@ -264,18 +280,387 @@ nav {
         width: 100%;
     }
 }
-/* ------------------------------------------------------------------------
- * Gallery carousel
- * ------------------------------------------------------------------------ */
 
-.carousel {
-    position: relative;
-    width: 50%;
-    max-width: 50%;
-    margin: 0 auto;
+
+/* ======================================================================
+ * PROJECTS PAGE
+ * ==================================================================== */
+
+/* ===== TOP NAV (Twitter-card style header) ===== */
+.topnav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: var(--color-bg-navbar);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--color-box-border);
+    z-index: 1000;
+}
+
+.topnav-inner {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: space-between;
+    padding: 18px 60px;
+}
+
+.site-logo {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    color: var(--color-accent);
+    text-transform: uppercase;
+}
+
+.hamburger-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.hamburger-bar {
+    width: 100%;
+    height: 2px;
+    background: var(--color-accent);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.hamburger-btn.is-open .hamburger-bar:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+}
+
+.hamburger-btn.is-open .hamburger-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger-btn.is-open .hamburger-bar:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+}
+
+.mobile-menu {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-navbar);
+    border-top: 1px solid var(--color-box-border);
+}
+
+.mobile-menu[hidden] {
+    display: none;
+}
+
+.mobile-menu li a {
+    display: block;
+    padding: 16px 60px;
+    color: var(--color-link);
+    text-decoration: none;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-box-border);
+    transition: color 0.25s ease, padding-left 0.25s ease;
+}
+
+.mobile-menu li a:hover {
+    color: var(--color-link-hover);
+    padding-left: 68px;
+}
+
+/* ===== PAGE HEADER ===== */
+.page-header {
+    padding: 160px 60px 60px;
+    text-align: center;
+}
+
+.page-header h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--color-accent);
+    position: relative;
+    display: inline-block;
+}
+
+.page-header h1::after {
+    content: "";
+    display: block;
+    width: 70px;
+    height: 3px;
+    margin: 18px auto 0;
+    background: var(--color-accent);
+    border-radius: 2px;
+    opacity: 0.5;
+}
+
+/* ===== PROJECT FEED ===== */
+.project-feed {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 24px 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+}
+
+.section-intro {
+    max-width: 700px;
+    margin: 10px auto;
+    text-align: center;
+    font-size: 1.02rem;
+    line-height: 1.7;
+    color: var(--color-text-light);
+    font-style: italic;
+}
+
+/* ===== PROJECT CARD (collapsed by default, hover to expand) ===== */
+.project-card {
+    background: var(--color-card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--color-card-border);
+    border-radius: 18px;
+    padding: 22px 28px;
+    box-shadow: 0 6px 16px var(--color-box-shadow);
+    cursor: pointer;
+    transition: background 0.4s ease, box-shadow 0.4s ease, transform 0.35s ease, border-color 0.4s ease;
+}
+
+.project-card:hover,
+.project-card:focus-within {
+    background: var(--color-card-bg-hover);
+    box-shadow: 0 14px 34px var(--color-box-shadow);
+    transform: translateY(-3px);
+    border-color: var(--color-accent);
+}
+
+/* header row: avatar + title/badges, always visible */
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.card-avatar {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--color-secondary), var(--color-accent));
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.card-heading {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.project-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-accent);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.badge-gitc {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: var(--color-secondary);
+    color: var(--color-accent);
+    vertical-align: middle;
+}
+
+.badge-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.badge-date {
+    background: var(--color-secondary);
+    color: var(--color-text);
+}
+
+.badge-status-finished {
+    background: var(--status-finished-bg);
+    color: var(--status-finished);
+}
+
+.badge-status-unfinished {
+    background: var(--status-unfinished-bg);
+    color: var(--status-unfinished);
+}
+
+.badge-status-ongoing {
+    background: var(--status-ongoing-bg);
+    color: var(--status-ongoing);
+}
+
+.badge-status-planning {
+    background: var(--status-planning-bg);
+    color: var(--status-planning);
+}
+
+/* tags: always visible, part of the "collapsed" state */
+.tag-bubbles {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+    padding-left: 62px; /* aligns under the title, past the avatar */
+}
+
+.tag-bubble {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: var(--color-tag-bg);
+    color: var(--color-tag-text);
+    border: 1px solid var(--color-box-border);
+    white-space: nowrap;
+}
+
+/* ===== COLLAPSIBLE CONTENT (description, gallery, actions, details) ===== */
+.project-description,
+.project-gallery,
+.project-actions,
+.project-details {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    padding-left: 62px;
+    transition: max-height 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.45s ease,
+                margin-top 0.6s ease;
+}
+
+.project-card:hover .project-description,
+.project-card:focus-within .project-description,
+.project-card:hover .project-actions,
+.project-card:focus-within .project-actions,
+.project-card:hover .project-details,
+.project-card:focus-within .project-details {
+    max-height: 1200px;
+    opacity: 1;
+    margin-top: 16px;
+}
+
+.project-card:hover .project-gallery,
+.project-card:focus-within .project-gallery {
+    max-height: 900px;
+    opacity: 1;
+    margin-top: 18px;
+}
+
+.project-description {
+    font-size: 0.96rem;
+    line-height: 1.75;
+    color: var(--color-text-light);
+    max-width: 680px;
+    text-wrap: pretty;
+    word-wrap: break-word;
+}
+
+.project-description + .project-description {
+    margin-top: 10px;
+}
+
+/* ===== PROJECT DETAILS (expanded extras for large projects) ===== */
+.project-details {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.detail-section h3 {
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--color-box-border);
+    padding-bottom: 6px;
+}
+
+.detail-section p,
+.detail-section li {
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: var(--color-text-light);
+}
+
+.detail-section ul {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 6px 18px;
+}
+
+.detail-section ul li::before {
+    content: "\2022";
+    color: var(--color-accent);
+    margin-right: 8px;
+}
+
+/* ===== PROJECT ACTIONS ===== */
+.project-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.link-btn {
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 9px 20px;
+    border-radius: 30px;
+    border: 1.5px solid var(--color-accent);
+    background: transparent;
+    color: var(--color-accent);
+    cursor: pointer;
+    transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.link-btn:hover {
+    background: var(--color-accent);
+    color: var(--color-primary);
+    box-shadow: 0 4px 14px var(--color-box-shadow);
+}
+
+/* ===== GALLERY CAROUSEL (re-themed to match the card design) ===== */
+.project-gallery.carousel {
+    width: 100%;
+    max-width: 460px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .carousel-viewport {
@@ -284,36 +669,42 @@ nav {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    aspect-ratio: 4 / 3; /* adjust to taste, or remove to let height be natural */
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--color-box-border);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .carousel-viewport .gallery-image {
     width: 100%;
     height: 100%;
-    object-fit: contain; /* use "cover" instead if you want it cropped to fill */
+    object-fit: contain;
     display: block;
 }
 
 .carousel-btn {
     flex: 0 0 auto;
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
+    background: var(--color-accent);
+    color: var(--color-primary);
     border: none;
     border-radius: 50%;
-    width: 2.5rem;
-    height: 2.5rem;
-    font-size: 1.5rem;
+    width: 2.3rem;
+    height: 2.3rem;
+    font-size: 1.3rem;
     line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, transform 0.2s ease;
+    box-shadow: 0 4px 10px var(--color-box-shadow);
 }
 
 .carousel-btn:hover,
 .carousel-btn:focus-visible {
-    background: rgba(0, 0, 0, 0.85);
+    background: var(--color-text-light);
+    transform: scale(1.06);
 }
 
 .carousel-counter {
@@ -321,17 +712,107 @@ nav {
     bottom: 0.5rem;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.55);
     color: #fff;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     padding: 0.15rem 0.6rem;
     border-radius: 999px;
+    letter-spacing: 0.5px;
 }
 
-/* Stack full-width on small screens so it doesn't get squished */
-@media (max-width: 700px) {
-    .carousel {
-        width: 100%;
+.gallery-empty-note {
+    font-size: 0.85rem;
+    color: var(--color-text-light);
+    font-style: italic;
+}
+
+/* ===== FOOTER ===== */
+footer {
+    text-align: center;
+    padding: 50px 20px 70px;
+}
+
+#back-to-main {
+    display: inline-block;
+    text-decoration: none;
+    color: var(--color-accent);
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    padding: 12px 30px;
+    border: 1.5px solid var(--color-accent);
+    border-radius: 30px;
+    transition: 0.3s ease;
+}
+
+#back-to-main:hover {
+    background: var(--color-accent);
+    color: var(--color-primary);
+    box-shadow: 0 6px 16px var(--color-box-shadow);
+}
+
+/* ===== RESPONSIVE (projects page) ===== */
+@media (max-width: 768px) {
+    .topnav-inner {
+        padding: 16px 24px;
+    }
+
+    .mobile-menu li a {
+        padding: 16px 24px;
+    }
+
+    .mobile-menu li a:hover {
+        padding-left: 32px;
+    }
+
+    .page-header {
+        padding: 130px 24px 40px;
+    }
+
+    .page-header h1 {
+        font-size: 2.1rem;
+    }
+
+    .project-feed {
+        padding: 0 16px 70px;
+        gap: 18px;
+    }
+
+    .project-card {
+        padding: 18px 18px;
+    }
+
+    .card-avatar {
+        width: 38px;
+        height: 38px;
+    }
+
+    .tag-bubbles,
+    .project-description,
+    .project-gallery,
+    .project-actions,
+    .project-details {
+        padding-left: 0;
+    }
+
+    .project-title {
+        font-size: 1.08rem;
+    }
+
+    /* hover doesn't exist reliably on touch — keep cards fully expanded */
+    .project-description,
+    .project-gallery,
+    .project-actions,
+    .project-details {
+        max-height: none;
+        opacity: 1;
+        margin-top: 14px;
+    }
+
+    .project-gallery.carousel {
         max-width: 100%;
+    }
+
+    .detail-section ul {
+        grid-template-columns: 1fr;
     }
 }
