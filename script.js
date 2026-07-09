@@ -129,14 +129,50 @@ function renderGallery(gallery, folder, files) {
         return;
     }
 
-    files.forEach(file => {
-        const img = document.createElement("img");
+    let current = 0;
+
+    gallery.classList.add("carousel");
+
+    const viewport = document.createElement("div");
+    viewport.className = "carousel-viewport";
+
+    const img = document.createElement("img");
+    img.className = "gallery-image";
+    img.loading = "lazy";
+    viewport.appendChild(img);
+
+    const prevBtn = document.createElement("button");
+    prevBtn.type = "button";
+    prevBtn.className = "carousel-btn carousel-prev";
+    prevBtn.setAttribute("aria-label", "Previous image");
+    prevBtn.textContent = "\u2039";
+
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "carousel-btn carousel-next";
+    nextBtn.setAttribute("aria-label", "Next image");
+    nextBtn.textContent = "\u203A";
+
+    const counter = document.createElement("div");
+    counter.className = "carousel-counter";
+
+    function show(index) {
+        current = (index + files.length) % files.length;
+        const file = files[current];
         img.src = folder + file;
         img.alt = file;
-        img.loading = "lazy";
-        img.className = "gallery-image";
-        gallery.appendChild(img);
-    });
+        counter.textContent = `${current + 1} / ${files.length}`;
+    }
+
+    prevBtn.addEventListener("click", () => show(current - 1));
+    nextBtn.addEventListener("click", () => show(current + 1));
+
+    gallery.appendChild(prevBtn);
+    gallery.appendChild(viewport);
+    gallery.appendChild(nextBtn);
+    gallery.appendChild(counter);
+
+    show(0);
 }
 
 function markGalleryEmpty(gallery) {
