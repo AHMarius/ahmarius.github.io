@@ -974,10 +974,23 @@ footer {
         display: none;
     }
 
-    .card-avatar {
-        width: 36px;
-        height: 36px;
-    }
+    .card-avatar{
+    flex: 0 0 auto;
+
+    width:42px;
+    height:42px;
+    border-radius:50%;
+
+    background:#666;
+
+    border:2px solid rgba(255,255,255,.25);
+
+    box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.25),
+        0 4px 12px rgba(0,0,0,.25);
+
+    transition:.3s;
+}
 
     .project-title {
         font-size: 1.05rem;

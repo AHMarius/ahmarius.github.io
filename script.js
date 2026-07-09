@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initHamburgerMenu();
     initLinkButtons();
     initGalleries();
+    initProjectAvatars();
 });
 
 /* ------------------------------------------------------------------------
@@ -177,4 +178,96 @@ function renderGallery(gallery, folder, files) {
 
 function markGalleryEmpty(gallery) {
     gallery.innerHTML = "<p class=\"gallery-empty-note\">Images unavailable</p>";
+}
+function initProjectAvatars() {
+    const root = getComputedStyle(document.documentElement);
+
+    const colors = {
+        lang: root.getPropertyValue("--tag-lang").trim(),
+        tool: root.getPropertyValue("--tag-tool").trim(),
+        type: root.getPropertyValue("--tag-type").trim(),
+        concept: root.getPropertyValue("--tag-concept").trim(),
+        misc: root.getPropertyValue("--tag-misc").trim()
+    };
+
+    const categories = {
+        lang: [
+            "tag-csharp","tag-java","tag-cpp",
+            "tag-kotlin","tag-python","tag-vhdl"
+        ],
+        tool: [
+            "tag-unity","tag-raylib","tag-sdl","tag-oracle",
+            "tag-database","tag-sqlite","tag-android",
+            "tag-mobile","tag-vivado","tag-fpga",
+            "tag-basys3","tag-digital-logic",
+            "tag-osm","tag-api","tag-db","tag-easybmp"
+        ],
+        type: [
+            "tag-singleplayer","tag-multiplayer","tag-team",
+            "tag-server-client","tag-server","tag-game",
+            "tag-game-engine","tag-game-dev","tag-oop",
+            "tag-design-patterns","tag-scene-management",
+            "tag-save-system","tag-shaders",
+            "tag-cli","tag-ipc","tag-parallel",
+            "tag-database-application"
+        ],
+        concept: [
+            "tag-physics","tag-2d","tag-collisions",
+            "tag-graphics","tag-simulation","tag-ai",
+            "tag-aco","tag-genetic","tag-graphs",
+            "tag-optimization","tag-routing",
+            "tag-research","tag-fluid-dynamics",
+            "tag-graphing","tag-uml",
+            "tag-software-engineering","tag-erasmus"
+        ]
+    };
+
+    document.querySelectorAll(".project-card").forEach(card => {
+
+        const counts = {
+            lang:0,
+            tool:0,
+            type:0,
+            concept:0,
+            misc:0
+        };
+
+        card.querySelectorAll(".tag-bubble").forEach(tag => {
+
+            let found = false;
+
+            for(const category in categories){
+                if(categories[category].some(c => tag.classList.contains(c))){
+                    counts[category]++;
+                    found = true;
+                    break;
+                }
+            }
+
+            if(!found) counts.misc++;
+        });
+
+        const total = Object.values(counts).reduce((a,b)=>a+b,0);
+
+        if(total === 0) return;
+
+        let angle = 0;
+        const slices = [];
+
+        Object.entries(counts).forEach(([category,count]) => {
+
+            if(count === 0) return;
+
+            const start = angle;
+            angle += count / total * 360;
+
+            slices.push(`${colors[category]} ${start}deg ${angle}deg`);
+        });
+
+        const avatar = card.querySelector(".card-avatar");
+
+        if(avatar){
+            avatar.style.background = `conic-gradient(${slices.join(",")})`;
+        }
+    });
 }
