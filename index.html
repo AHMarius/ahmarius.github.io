@@ -1,51 +1,89 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>DIGITAL CV</title>
-</head>
 <body>
+
     <video
-    id="bgVideo"
-    autoplay
-    muted
-    loop
-    playsinline
-    disablepictureinpicture
-    controlslist="nodownload noplaybackrate noremoteplayback"
->
-    <source src="video.mp4" type="video/mp4">
-</video>
-    <a href="#"> %my photo</a>
+        id="bgVideo"
+        autoplay
+        muted
+        loop
+        playsinline
+        disablepictureinpicture
+        controlslist="nodownload noplaybackrate noremoteplayback">
+        <source src="video.mp4" type="video/mp4">
+    </video>
 
-    <h1>Hrițcu Alexandru-Marius</h1>
+    <nav>
+        <div class="logo">DIGITAL CV</div>
 
-   <p>
-    I am a third-year Computer Science and Information Technology student at
-    the Technical University of Iași with a strong passion for software
-    engineering.
-</p>
+        <ul class="nav-links">
+            <li><a href="projects.html">Projects</a></li>
+            <li><a href="cv.pdf">CV</a></li>
+            <li><a href="#about">About</a></li>
+        </ul>
+    </nav>
 
-<p>
-    My primary interests include computer graphics, game engine development,
-    physics simulation, and project management. I enjoy designing efficient,
-    high-quality software solutions and continuously expanding my technical
-    expertise through challenging projects.
-</p>
+    <main class="hero">
 
-<p>
-    Currently, I am seeking internship opportunities where I can contribute,
-    learn, and grow as a software engineer.
-</p>
+        <img
+            src="images/profile.jpg"
+            alt="Alexandru-Marius Hrițcu"
+            class="hero-photo">
 
-    <p>From here on you can go see: </p>
+        <span class="hero-subtitle">
+            Software Engineer • Computer Graphics • Simulation
+        </span>
 
-    <button id="btn-projects">My projects</button>
-    <button id="btn-cv">My CV</button>
-    <button id="btn-about">About Me</button>
+        <h1>
+            Hrițcu<br>
+            Alexandru-Marius
+        </h1>
 
-    <script src="script.js"></script>
+        <p>
+            Third-year Computer Science student at the Technical University of Iași
+            with a passion for software engineering, computer graphics, physics
+            simulation and high-performance systems.
+        </p>
+
+        <p>
+            I enjoy building game engines, graphics applications, distributed
+            software and mathematical simulations while continuously exploring new
+            technologies and software architectures.
+        </p>
+
+        <div class="hero-stats">
+
+            <div class="stat">
+                <h2>20+</h2>
+                <span>Projects</span>
+            </div>
+
+            <div class="stat">
+                <h2>6+</h2>
+                <span>Languages</span>
+            </div>
+
+            <div class="stat">
+                <h2>4+</h2>
+                <span>Years Building Software</span>
+            </div>
+
+        </div>
+
+        <div class="hero-buttons">
+
+            <button
+                class="primary-btn"
+                onclick="location.href='projects.html'">
+                Explore Projects
+            </button>
+
+            <button
+                class="secondary-btn"
+                onclick="location.href='cv.pdf'">
+                Download CV
+            </button>
+
+        </div>
+
+    </main>
+
 </body>
-</html>
