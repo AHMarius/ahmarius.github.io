@@ -1,13 +1,13 @@
 /* ===== VARIABLES ===== */
 :root {
-    --color-bg-body: #e3e3de;
+    --color-bg-body: #d3d3ca;
     --color-bg-navbar: #c3c5c1cb;
     --color-bg-api: rgba(207, 210, 205, 0.8);
-    --color-primary: #e6e0e0;
+    --color-primary: #fffcfc;
     --color-accent: #847577;
     --color-secondary: #cfd2cd;
     --color-text: #716567;
-   --color-text-light: #dfd6d6;
+   --color-text-light: #fcf3f3;
     --color-link: #685b5d;
     --color-link-hover: var(--color-accent);
     --color-box-border: rgba(132, 117, 119, 0.2);
