@@ -1,44 +1,62 @@
 /* ===== VARIABLES ===== */
 :root {
     --color-bg-body: #d3d3ca;
-    --color-bg-navbar: #c3c5c1cb;
-    --color-bg-api: rgba(207, 210, 205, 0.8);
-    --color-primary: #fffcfc;
-    --color-accent: #847577;
-    --color-secondary: #cfd2cd;
-    --color-text: #716567;
-   --color-text-light: #fcf3f3;
-    --color-link: #685b5d;
-    --color-link-hover: var(--color-accent);
-    --color-box-border: rgba(132, 117, 119, 0.2);
-    --color-box-shadow: rgba(0, 0, 0, 0.22);
+    --color-bg-navbar: rgba(195, 197, 193, 0.88);
+    --color-bg-api: rgba(255, 255, 255, 0.72);
 
-    /* project card system */
-    --color-card-bg: rgba(255,255,255,0.2);
-    --color-card-bg-hover: rgba(255,255,255,0.25);
-    --color-card-border: rgba(255,255,255,0.3);
+    --color-primary: #ffffff;
 
+    /* Main accent */
+    --color-accent: #7b5b5f;
 
-    --status-finished: #6f9a63;
-    --status-finished-bg: rgba(111, 154, 99, 0.16);
-    --status-unfinished: #bb6f56;
-    --status-unfinished-bg: rgba(187, 111, 86, 0.16);
-    --status-ongoing: #5c8ab0;
-    --status-ongoing-bg: rgba(92, 138, 176, 0.16);
-    --status-planning: #a172ad;
-    --status-planning-bg: rgba(161, 114, 173, 0.16);
+    /* Secondary surfaces */
+    --color-secondary: #ecece8;
 
-    /* tag categories - muted but distinct hues */
-    --tag-lang: #3f6f8f;
-    --tag-lang-bg: rgba(63, 111, 143, 0.14);
-    --tag-tool: #4f7d47;
-    --tag-tool-bg: rgba(79, 125, 71, 0.14);
-    --tag-type: #7a4f8a;
-    --tag-type-bg: rgba(122, 79, 138, 0.14);
-    --tag-concept: #a5701f;
-    --tag-concept-bg: rgba(165, 112, 31, 0.15);
-    --tag-misc: #6c5f61;
-    --tag-misc-bg: rgba(108, 95, 97, 0.12);
+    /* HIGH CONTRAST TEXT */
+    --color-text: #2f2b2c;
+    --color-text-light: #fafafa;
+
+    /* Links */
+    --color-link: #5b4348;
+    --color-link-hover: #8d5e66;
+
+    /* Borders */
+    --color-box-border: rgba(40, 40, 40, 0.12);
+    --color-box-shadow: rgba(0, 0, 0, 0.28);
+
+    /* Cards */
+    --color-card-bg: rgba(255,255,255,0.28);
+    --color-card-bg-hover: rgba(255,255,255,0.38);
+    --color-card-border: rgba(255,255,255,0.45);
+
+    /* Status */
+    --status-finished: #467c39;
+    --status-finished-bg: rgba(70,124,57,0.16);
+
+    --status-unfinished: #b5533d;
+    --status-unfinished-bg: rgba(181,83,61,0.16);
+
+    --status-ongoing: #2f6fa5;
+    --status-ongoing-bg: rgba(47,111,165,0.16);
+
+    --status-planning: #8751a0;
+    --status-planning-bg: rgba(135,81,160,0.16);
+
+    /* Tags */
+    --tag-lang: #255b7a;
+    --tag-lang-bg: rgba(37,91,122,0.14);
+
+    --tag-tool: #34632d;
+    --tag-tool-bg: rgba(52,99,45,0.14);
+
+    --tag-type: #6b3d82;
+    --tag-type-bg: rgba(107,61,130,0.14);
+
+    --tag-concept: #9b6110;
+    --tag-concept-bg: rgba(155,97,16,0.14);
+
+    --tag-misc: #54494b;
+    --tag-misc-bg: rgba(84,73,75,0.12);
 }
 
 /* ===== BACKGROUND VIDEO ===== */
