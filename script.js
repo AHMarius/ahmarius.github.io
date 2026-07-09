@@ -180,21 +180,40 @@ function markGalleryEmpty(gallery) {
     gallery.innerHTML = "<p class=\"gallery-empty-note\">Images unavailable</p>";
 }
 function initProjectAvatars() {
+
     const root = getComputedStyle(document.documentElement);
 
+    function solidColor(variable) {
+        const value = root.getPropertyValue(variable).trim();
+
+        // rgba(...) -> rgb(...)
+        if (value.startsWith("rgba")) {
+            const parts = value
+                .replace("rgba(", "")
+                .replace(")", "")
+                .split(",");
+
+            return `rgb(${parts[0].trim()}, ${parts[1].trim()}, ${parts[2].trim()})`;
+        }
+
+        return value;
+    }
+
     const colors = {
-        lang: root.getPropertyValue("--tag-lang").trim(),
-        tool: root.getPropertyValue("--tag-tool").trim(),
-        type: root.getPropertyValue("--tag-type").trim(),
-        concept: root.getPropertyValue("--tag-concept").trim(),
-        misc: root.getPropertyValue("--tag-misc").trim()
+        lang: solidColor("--tag-lang-bg"),
+        tool: solidColor("--tag-tool-bg"),
+        type: solidColor("--tag-type-bg"),
+        concept: solidColor("--tag-concept-bg"),
+        misc: solidColor("--tag-misc-bg")
     };
 
     const categories = {
+
         lang: [
             "tag-csharp","tag-java","tag-cpp",
             "tag-kotlin","tag-python","tag-vhdl"
         ],
+
         tool: [
             "tag-unity","tag-raylib","tag-sdl","tag-oracle",
             "tag-database","tag-sqlite","tag-android",
@@ -202,15 +221,17 @@ function initProjectAvatars() {
             "tag-basys3","tag-digital-logic",
             "tag-osm","tag-api","tag-db","tag-easybmp"
         ],
+
         type: [
             "tag-singleplayer","tag-multiplayer","tag-team",
             "tag-server-client","tag-server","tag-game",
             "tag-game-engine","tag-game-dev","tag-oop",
             "tag-design-patterns","tag-scene-management",
-            "tag-save-system","tag-shaders",
-            "tag-cli","tag-ipc","tag-parallel",
+            "tag-save-system","tag-shaders","tag-cli",
+            "tag-ipc","tag-parallel",
             "tag-database-application"
         ],
+
         concept: [
             "tag-physics","tag-2d","tag-collisions",
             "tag-graphics","tag-simulation","tag-ai",
@@ -225,49 +246,62 @@ function initProjectAvatars() {
     document.querySelectorAll(".project-card").forEach(card => {
 
         const counts = {
-            lang:0,
-            tool:0,
-            type:0,
-            concept:0,
-            misc:0
+            lang: 0,
+            tool: 0,
+            type: 0,
+            concept: 0,
+            misc: 0
         };
 
         card.querySelectorAll(".tag-bubble").forEach(tag => {
 
-            let found = false;
+            let matched = false;
 
-            for(const category in categories){
-                if(categories[category].some(c => tag.classList.contains(c))){
+            for (const category in categories) {
+
+                if (categories[category].some(cls => tag.classList.contains(cls))) {
                     counts[category]++;
-                    found = true;
+                    matched = true;
                     break;
                 }
             }
 
-            if(!found) counts.misc++;
+            if (!matched)
+                counts.misc++;
         });
 
         const total = Object.values(counts).reduce((a,b)=>a+b,0);
 
-        if(total === 0) return;
+        if (total === 0)
+            return;
 
         let angle = 0;
         const slices = [];
 
         Object.entries(counts).forEach(([category,count]) => {
 
-            if(count === 0) return;
+            if (count === 0)
+                return;
 
             const start = angle;
-            angle += count / total * 360;
+            angle += (count / total) * 360;
 
-            slices.push(`${colors[category]} ${start}deg ${angle}deg`);
+            slices.push(
+                `${colors[category]} ${start}deg ${angle}deg`
+            );
+
         });
 
         const avatar = card.querySelector(".card-avatar");
 
-        if(avatar){
-            avatar.style.background = `conic-gradient(${slices.join(",")})`;
-        }
+        if (!avatar)
+            return;
+
+        avatar.style.background = `conic-gradient(${slices.join(",")})`;
+
+        avatar.style.border = "2px solid rgba(255,255,255,.35)";
+        avatar.style.boxShadow =
+            "0 4px 12px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.25)";
     });
+
 }
