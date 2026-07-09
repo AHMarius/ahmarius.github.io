@@ -459,16 +459,16 @@ nav {
 .project-card {
     position: relative;
 
-    background: rgba(235, 235, 235, 0.22);
+    background: rgba(235, 235, 235, 0.7);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
 
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.75);
     border-radius: 18px;
     padding: 20px 26px;
 
     box-shadow:
-        0 8px 20px rgba(0, 0, 0, 0.16);
+        0 8px 20px rgba(0, 0, 0, 0.8);
 
     cursor: pointer;
 
