@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Alexandru-Marius Hrițcu — Computer Science student, software engineer, digital CV.">
     <title>Alexandru-Marius Hrițcu — Digital CV</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -22,11 +23,17 @@
     <nav>
         <div class="logo">DIGITAL CV</div>
 
-        <ul class="nav-links">
+        <ul class="nav-links" id="navLinks">
             <li><a href="projects.html">Projects</a></li>
             <li><a href="cv.pdf">CV</a></li>
             <li><a href="#about">About</a></li>
         </ul>
+
+        <button class="hamburger" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navLinks">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
     </nav>
 
     <main class="hero">
@@ -52,39 +59,11 @@
                 </h1>
 
                 <p>
-                    Third-year Computer Science and Information Technology student at the
-                    Technical University of Iași, passionate about software engineering,
-                    computer graphics, simulation, optimization, and high-performance
+                    Third-year Computer Science and Information Technology student at
+                    the Technical University of Iași, building software that spans
+                    computer graphics, simulation, optimization and high-performance
                     computing.
                 </p>
-
-                <p>
-                    My work focuses on building efficient software systems that combine
-                    computer graphics, physics simulation, artificial intelligence,
-                    optimization algorithms, and distributed architectures. I enjoy
-                    transforming mathematical concepts into practical applications while
-                    continuously exploring modern software design, performance
-                    optimization, and scalable system architecture.
-                </p>
-
-                <div class="hero-stats">
-
-                    <div class="stat">
-                        <h2>20+</h2>
-                        <span>Software Projects</span>
-                    </div>
-
-                    <div class="stat">
-                        <h2>6+</h2>
-                        <span>Programming Languages &amp; Technologies</span>
-                    </div>
-
-                    <div class="stat">
-                        <h2>4+</h2>
-                        <span>Years of Software Development</span>
-                    </div>
-
-                </div>
 
                 <div class="hero-buttons">
 
@@ -106,7 +85,76 @@
 
         </div>
 
+        <a href="#about" class="scroll-cue" aria-label="Scroll to About section">
+            <span></span>
+        </a>
+
     </main>
+
+    <section id="about" class="about">
+        <div class="about-inner">
+
+            <span class="section-eyebrow">About</span>
+            <h2 class="about-heading">Background &amp; focus</h2>
+
+            <div class="about-text">
+                <p>
+                    Third-year Computer Science and Information Technology student at the
+                    Technical University of Iași, passionate about software engineering,
+                    computer graphics, simulation, optimization, and high-performance
+                    computing.
+                </p>
+
+                <p>
+                    My work focuses on building efficient software systems that combine
+                    computer graphics, physics simulation, artificial intelligence,
+                    optimization algorithms, and distributed architectures. I enjoy
+                    transforming mathematical concepts into practical applications while
+                    continuously exploring modern software design, performance
+                    optimization, and scalable system architecture.
+                </p>
+            </div>
+
+            <div class="hero-stats">
+
+                <div class="stat">
+                    <h2>20+</h2>
+                    <span>Software Projects</span>
+                </div>
+
+                <div class="stat">
+                    <h2>6+</h2>
+                    <span>Programming Languages &amp; Technologies</span>
+                </div>
+
+                <div class="stat">
+                    <h2>4+</h2>
+                    <span>Years of Software Development</span>
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+
+    <script>
+        const navToggle = document.getElementById('navToggle');
+        const navLinks = document.getElementById('navLinks');
+
+        navToggle.addEventListener('click', () => {
+            const isOpen = navLinks.classList.toggle('active');
+            navToggle.classList.toggle('is-open', isOpen);
+            navToggle.setAttribute('aria-expanded', String(isOpen));
+        });
+
+        navLinks.querySelectorAll('a').forEach((link) => {
+            link.addEventListener('click', () => {
+                navLinks.classList.remove('active');
+                navToggle.classList.remove('is-open');
+                navToggle.setAttribute('aria-expanded', 'false');
+            });
+        });
+    </script>
 
 </body>
 </html>
