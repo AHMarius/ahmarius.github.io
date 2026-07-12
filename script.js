@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initLinkButtons();
     initGalleries();
     initProjectAvatars();
+    initGitHubStats();
 });
 
 /* ------------------------------------------------------------------------
@@ -304,4 +305,43 @@ function initProjectAvatars() {
             "0 4px 12px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.25)";
     });
 
+}
+
+/* ------------------------------------------------------------------------
+ * GitHub live stats (About page)
+ *
+ * Fetches public repo count via the GitHub REST API and renders it into
+ * the "stat-live" card. Falls back to a friendly message on failure
+ * (rate limit, network error, offline, wrong username, etc.) instead of
+ * leaving the UI stuck on "loading…".
+ *
+ * ------------------------------------------------------------------------ */
+
+
+async function initGitHubStats() {
+    const countEl = document.getElementById("github-repo-count");
+    const statusEl = document.getElementById("github-repo-status");
+
+    if (!countEl || !statusEl) return;
+
+    try {
+        const res = await fetch(
+            `https://api.github.com/users/ahmarius`
+        );
+
+        if (!res.ok) throw new Error(`GitHub API responded ${res.status}`);
+
+        const data = await res.json();
+
+        if (typeof data.public_repos !== "number") {
+            throw new Error("Unexpected API response shape");
+        }
+
+        countEl.textContent = `${data.public_repos}+`;
+        statusEl.textContent = "live from GitHub";
+    } catch (err) {
+        countEl.textContent = "20+";
+        statusEl.textContent = "cached";
+        console.warn("GitHub stats fetch failed, showing fallback:", err);
+    }
 }
