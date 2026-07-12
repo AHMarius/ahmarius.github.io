@@ -43,7 +43,7 @@
         <h1>About</h1>
     </header>
 
-    <main class="about" style="padding-top: 20px;">
+    <main class="about">
         <div class="about-inner">
 
             <span class="section-eyebrow">Background</span>
@@ -81,6 +81,15 @@
                 <div class="stat">
                     <h2>4+</h2>
                     <span>Years of Software Development</span>
+                </div>
+
+                <!-- ===== LIVE GITHUB REPO COUNT =====
+                     Populated client-side from the GitHub REST API.
+                     Replace GITHUB_USERNAME_PLACEHOLDER in script.js with the real username. -->
+                <div class="stat stat-live">
+                    <h2 id="github-repo-count">—</h2>
+                    <span>Public GitHub Repos</span>
+                    <span class="stat-status" id="github-repo-status">loading…</span>
                 </div>
             </div>
 
@@ -198,6 +207,56 @@
                     <a class="link-btn-light" href="projects.html#project-fluid-dynamics">Fluid Dynamics</a>
                     <a class="link-btn-light" href="projects.html#project-fpga-comparator">FPGA Comparator</a>
                     <a class="link-btn-light" href="projects.html#project-turistrap">TurisTrap</a>
+                </div>
+            </div>
+
+            <!-- ============ SOCIALS / PLATFORMS ============
+                 Replace href="#" placeholders with real profile URLs. -->
+            <div class="about-block">
+                <h3 class="about-subheading">Find me elsewhere</h3>
+
+                <div class="socials-grid">
+                    <a class="social-link" href="https://github.com/PLACEHOLDER_GITHUB_USERNAME" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+                        <span class="social-icon">
+                            <svg viewBox="0 0 24 24"><path d="M12 .5C5.73.5.98 5.24.98 11.52c0 4.94 3.2 9.13 7.65 10.6.56.1.76-.24.76-.54 0-.27-.01-1.15-.02-2.09-3.11.68-3.77-1.32-3.77-1.32-.51-1.29-1.24-1.64-1.24-1.64-1.01-.69.08-.67.08-.67 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.24.93.1-.72.39-1.21.71-1.49-2.48-.28-5.09-1.24-5.09-5.53 0-1.22.44-2.22 1.15-3-.11-.28-.5-1.42.11-2.96 0 0 .94-.3 3.08 1.15a10.7 10.7 0 0 1 5.6 0c2.14-1.45 3.08-1.15 3.08-1.15.61 1.54.22 2.68.11 2.96.72.78 1.15 1.78 1.15 3 0 4.3-2.62 5.24-5.11 5.52.4.35.76 1.03.76 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.2.65.77.54A11.03 11.03 0 0 0 23.02 11.5C23.02 5.24 18.27.5 12 .5Z"/></svg>
+                        </span>
+                        GitHub
+                    </a>
+
+                    <a class="social-link" href="https://www.linkedin.com/in/PLACEHOLDER_LINKEDIN" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+                        <span class="social-icon">
+                            <svg viewBox="0 0 24 24"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.95v5.66H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.38-1.85 3.6 0 4.26 2.37 4.26 5.46v6.28ZM5.34 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13ZM7.12 20.45H3.56V9h3.56v11.45ZM22.22 0H1.77C.8 0 0 .78 0 1.75v20.5C0 23.22.8 24 1.77 24h20.45c.98 0 1.78-.78 1.78-1.75V1.75C24 .78 23.2 0 22.22 0Z"/></svg>
+                        </span>
+                        LinkedIn
+                    </a>
+
+                    <a class="social-link" href="https://alexmh05.itch.io" target="_blank" rel="noopener noreferrer" aria-label="itch.io">
+                        <span class="social-icon">
+                            <svg viewBox="0 0 24 24"><path d="M4.4 2.4C3 3.3.4 6.2.4 6.9c0 1.4 1.3 2.7 2.8 2.7 1.6 0 2.8-1.2 2.8-1.2s1.1 1.2 2.8 1.2c1.6 0 2.7-1.2 2.7-1.2s1.2 1.2 2.9 1.2 2.8-1.2 2.8-1.2 1.2 1.2 2.7 1.2c1.6 0 2.9-1.3 2.9-2.7 0-.7-2.6-3.6-4-4.5C18.6 2 16.5 2 12 2s-6.6 0-7.6.4Zm.2 8.6c-.4 0-.7 0-1.1-.1-.2 2.9-.5 6.4-.5 7.2 0 1.7 1.1 3 3.6 3 1.3 0 2.3-.5 3-1.5.4.9 1.4 1.5 2.8 1.5.9 0 1.7-.3 2.2-.9.5.6 1.3.9 2.2.9 1.4 0 2.5-.6 2.8-1.5.7 1 1.7 1.5 3 1.5 2.5 0 3.6-1.3 3.6-3 0-.8-.3-4.3-.5-7.2-.3.1-.7.1-1.1.1-1.2 0-2.2-.4-2.9-1-.8.6-1.8 1-3 1s-2.2-.4-2.9-1c-.7.6-1.7 1-2.9 1s-2.2-.4-2.9-1c-.7.6-1.7 1-2.9 1Zm2.2 2.3c1.2 0 2.2.9 2.2 2.4 0 1.4-.4 3.2-1 3.9-.3.4-.6.6-1.1.6-.9 0-1.5-.9-1.7-2-.2-1.1-.2-2.4 0-3.4.2-.9.7-1.5 1.6-1.5Zm7.7 0c.9 0 1.4.6 1.6 1.5.2 1 .2 2.3 0 3.4-.2 1.1-.8 2-1.7 2-.5 0-.8-.2-1.1-.6-.6-.7-1-2.5-1-3.9 0-1.5 1-2.4 2.2-2.4Z"/></svg>
+                        </span>
+                        itch.io
+                    </a>
+
+                    <a class="social-link" href="https://www.youtube.com/@PLACEHOLDER_YOUTUBE" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
+                        <span class="social-icon">
+                            <svg viewBox="0 0 24 24"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31.6 31.6 0 0 0 0 12a31.6 31.6 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31.6 31.6 0 0 0 24 12a31.6 31.6 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z"/></svg>
+                        </span>
+                        YouTube
+                    </a>
+
+                    <a class="social-link" href="https://www.instagram.com/PLACEHOLDER_INSTAGRAM" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                        <span class="social-icon">
+                            <svg viewBox="0 0 24 24"><path d="M12 2.2c3.2 0 3.6 0 4.9.07 1.2.06 1.9.24 2.4.44a4.8 4.8 0 0 1 1.7 1.1 4.8 4.8 0 0 1 1.1 1.7c.2.5.38 1.2.44 2.4.06 1.3.07 1.7.07 4.9s0 3.6-.07 4.9c-.06 1.2-.24 1.9-.44 2.4a4.8 4.8 0 0 1-1.1 1.7 4.8 4.8 0 0 1-1.7 1.1c-.5.2-1.2.38-2.4.44-1.3.06-1.7.07-4.9.07s-3.6 0-4.9-.07c-1.2-.06-1.9-.24-2.4-.44a4.8 4.8 0 0 1-1.7-1.1 4.8 4.8 0 0 1-1.1-1.7c-.2-.5-.38-1.2-.44-2.4C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.9c.06-1.2.24-1.9.44-2.4a4.8 4.8 0 0 1 1.1-1.7 4.8 4.8 0 0 1 1.7-1.1c.5-.2 1.2-.38 2.4-.44C8.4 2.2 8.8 2.2 12 2.2Zm0 1.8c-3.15 0-3.52 0-4.77.07-1.02.05-1.57.21-1.94.35-.49.19-.84.42-1.2.79-.37.36-.6.71-.79 1.2-.14.37-.3.92-.35 1.94-.07 1.25-.07 1.62-.07 4.77s0 3.52.07 4.77c.05 1.02.21 1.57.35 1.94.19.49.42.84.79 1.2.36.37.71.6 1.2.79.37.14.92.3 1.94.35 1.25.07 1.62.07 4.77.07s3.52 0 4.77-.07c1.02-.05 1.57-.21 1.94-.35.49-.19.84-.42 1.2-.79.37-.36.6-.71.79-1.2.14-.37.3-.92.35-1.94.07-1.25.07-1.62.07-4.77s0-3.52-.07-4.77c-.05-1.02-.21-1.57-.35-1.94a3.1 3.1 0 0 0-.79-1.2 3.1 3.1 0 0 0-1.2-.79c-.37-.14-.92-.3-1.94-.35-1.25-.07-1.62-.07-4.77-.07Zm0 3.4a5.4 5.4 0 1 1 0 10.8 5.4 5.4 0 0 1 0-10.8Zm0 1.8a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm5.6-2a1.26 1.26 0 1 1 0 2.52 1.26 1.26 0 0 1 0-2.52Z"/></svg>
+                        </span>
+                        Instagram
+                    </a>
+
+                    <a class="social-link" href="https://www.facebook.com/PLACEHOLDER_FACEBOOK" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+                        <span class="social-icon">
+                            <svg viewBox="0 0 24 24"><path d="M22.7 12a10.7 10.7 0 1 0-12.4 10.6v-7.5H7.6V12h2.7V9.6c0-2.7 1.6-4.2 4.1-4.2 1.2 0 2.4.2 2.4.2v2.6h-1.3c-1.3 0-1.8.8-1.8 1.7V12h3l-.5 3.1h-2.5v7.5A10.7 10.7 0 0 0 22.7 12Z"/></svg>
+                        </span>
+                        Facebook
+                    </a>
                 </div>
             </div>
 
