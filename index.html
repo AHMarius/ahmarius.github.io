@@ -26,7 +26,7 @@
         <ul class="nav-links" id="navLinks">
             <li><a href="projects.html">Projects</a></li>
             <li><a href="cv.pdf">CV</a></li>
-            <li><a href="#about">About</a></li>
+            <li><a href="about.html">About</a></li>
         </ul>
 
         <button class="hamburger" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navLinks">
@@ -75,6 +75,12 @@
 
                     <button
                         class="secondary-btn"
+                        onclick="location.href='about.html'">
+                        About Me
+                    </button>
+
+                    <button
+                        class="secondary-btn"
                         onclick="location.href='cv.pdf'">
                         Download CV
                     </button>
@@ -85,57 +91,7 @@
 
         </div>
 
-        <a href="#about" class="scroll-cue" aria-label="Scroll to About section">
-            <span></span>
-        </a>
-
     </main>
-
-    <section id="about" class="about">
-        <div class="about-inner">
-
-            <span class="section-eyebrow">About</span>
-            <h2 class="about-heading">Background &amp; focus</h2>
-
-            <div class="about-text">
-                <p>
-                    Third-year Computer Science and Information Technology student at the
-                    Technical University of Iași, passionate about software engineering,
-                    computer graphics, simulation, optimization, and high-performance
-                    computing.
-                </p>
-
-                <p>
-                    My work focuses on building efficient software systems that combine
-                    computer graphics, physics simulation, artificial intelligence,
-                    optimization algorithms, and distributed architectures. I enjoy
-                    transforming mathematical concepts into practical applications while
-                    continuously exploring modern software design, performance
-                    optimization, and scalable system architecture.
-                </p>
-            </div>
-
-            <div class="hero-stats">
-
-                <div class="stat">
-                    <h2>20+</h2>
-                    <span>Software Projects</span>
-                </div>
-
-                <div class="stat">
-                    <h2>6+</h2>
-                    <span>Programming Languages &amp; Technologies</span>
-                </div>
-
-                <div class="stat">
-                    <h2>4+</h2>
-                    <span>Years of Software Development</span>
-                </div>
-
-            </div>
-
-        </div>
-    </section>
 
     <script>
         const navToggle = document.getElementById('navToggle');
