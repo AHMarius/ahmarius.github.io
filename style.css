@@ -146,44 +146,115 @@ nav {
 }
 
 /* ===== HERO ===== */
+
 .hero{
     min-height:100vh;
-    padding:120px 60px 60px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:140px 8% 80px;
+    position:relative;
+    z-index:1;
+}
+
+.hero-layout{
+    width:100%;
+    max-width:1600px;
+
+    display:grid;
+    grid-template-columns:520px 1fr;
+    gap:6rem;
+    align-items:center;
+}
+
+.hero-image{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.hero-content{
     display:flex;
     flex-direction:column;
-    justify-content:center;
-    align-items:flex-end;
-    position: relative;
-    z-index: 1;
+    align-items:flex-start;
 }
 
-.hero h1 {
-    font-size: 4rem;
-    font-weight: 700;
-    color: var(--color-primary);
-    margin-bottom: 20px;
+.hero-photo{
+    width:100%;
+    max-width:520px;
+    aspect-ratio:1/1;
+    object-fit:cover;
+
+    border-radius:28px;
+
+    border:3px solid rgba(255,255,255,.2);
+
+    box-shadow:
+        0 25px 60px rgba(0,0,0,.45);
+
+    transition:.35s;
 }
 
-.hero p {
-    max-width: 650px;
-    font-size: 1.2rem;
-    color: var(--color-text-light);
-    margin-bottom: 40px;
-    line-height: 1.6;
+.hero-photo:hover{
+    transform:scale(1.02);
 }
-.hero h1,
-.hero p,
-.hero-subtitle,
-.hero-stats,
-.hero-buttons{
-    max-width:650px;
+
+.hero-subtitle{
+    text-transform:uppercase;
+    letter-spacing:4px;
+    font-size:.85rem;
+    color:var(--color-text-light);
+    margin-bottom:18px;
+}
+
+.hero h1{
+    font-size:clamp(4rem,7vw,6.5rem);
+    line-height:.95;
+    color:var(--color-primary);
+    margin-bottom:24px;
+}
+
+.hero p{
+    max-width:760px;
+    font-size:1.15rem;
+    line-height:1.8;
+    color:var(--color-text-light);
+    margin-bottom:22px;
+}
+
+.hero-stats{
+    display:flex;
+    gap:24px;
+    flex-wrap:wrap;
+    margin:40px 0;
+}
+
+.stat{
+    text-align:center;
+
+    background:rgba(255,255,255,.08);
+    backdrop-filter:blur(10px);
+
+    padding:20px 32px;
+    border-radius:18px;
+
+    border:1px solid rgba(255,255,255,.15);
+}
+
+.stat h2{
+    color:white;
+    font-size:2rem;
+    margin-bottom:6px;
+}
+
+.stat span{
+    color:var(--color-text-light);
+    font-size:.9rem;
 }
 
 .hero-buttons{
     display:flex;
     gap:20px;
-    justify-content:flex-end;
-    width:100%;
 }
 
 .primary-btn {
