@@ -945,13 +945,6 @@ nav {
     margin-bottom:18px;
 }
 
-.hero-stats{
-    display:flex;
-    gap:30px;
-    justify-content:flex-end;
-    align-self:flex-end;
-    margin-bottom:45px;
-}
 
 .stat{
     text-align:center;
@@ -976,9 +969,6 @@ nav {
     font-size:.9rem;
 }
 
-.hero h1{
-    line-height:1.05;
-}
 
 .hero p:first-of-type{
     margin-bottom:15px;
