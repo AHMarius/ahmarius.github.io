@@ -318,30 +318,34 @@ function initProjectAvatars() {
  * ------------------------------------------------------------------------ */
 
 
+
 async function initGitHubStats() {
     const countEl = document.getElementById("github-repo-count");
     const statusEl = document.getElementById("github-repo-status");
 
-    if (!countEl || !statusEl) return;
+    console.log("countEl:", countEl);
+    console.log("statusEl:", statusEl);
+
+    if (!countEl || !statusEl) {
+        console.error("Elements not found.");
+        return;
+    }
 
     try {
-        const res = await fetch(
-            `https://api.github.com/users/ahmarius`
-        );
-
-        if (!res.ok) throw new Error(`GitHub API responded ${res.status}`);
+        const res = await fetch("https://api.github.com/users/ahmarius");
+        console.log("Status:", res.status);
 
         const data = await res.json();
+        console.log("Response:", data);
+        console.log("public_repos:", data.public_repos);
 
-        if (typeof data.public_repos !== "number") {
-            throw new Error("Unexpected API response shape");
-        }
-
-        countEl.textContent = `${data.public_repos}+`;
+        countEl.textContent = data.public_repos;
         statusEl.textContent = "live from GitHub";
+
     } catch (err) {
+        console.error("GitHub error:", err);
+
         countEl.textContent = "20+";
         statusEl.textContent = "cached";
-        console.warn("GitHub stats fetch failed, showing fallback:", err);
     }
 }
