@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IronHalo — Browser Build</title>
 
+    <!-- CheerpJ 4.3: supports Java 8, 11 and 17. -->
     <script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
 
     <style>
@@ -12,7 +13,7 @@
         body {
             margin: 0;
             width: 100%;
-            min-height: 100%;
+            height: 100%;
             background: #000;
             overflow: hidden;
         }
@@ -43,11 +44,11 @@
 
         #status h1 {
             margin: 0 0 10px;
-            font-size: 1.5rem;
+            font-size: 1.45rem;
         }
 
         #status p {
-            max-width: 650px;
+            max-width: 700px;
             margin: 0 auto;
             color: rgba(255, 255, 255, 0.78);
         }
@@ -58,66 +59,92 @@
 <div id="status">
     <div>
         <h1>Starting IronHalo…</h1>
-        <p>Initializing the Java 17 browser runtime.</p>
+        <p>Initializing the Java 17 runtime.</p>
     </div>
 </div>
 
-<script>
+<script type="module">
     const status = document.getElementById("status");
 
-    async function startIronHalo() {
-        try {
-            /*
-             * The JAR was compiled for Java 17.
-             * CheerpJ defaults to Java 8 unless version 17 is explicitly
-             * requested, which was the cause of the reported error.
-             */
-            await cheerpjInit({
-                version: 17,
-                status: "none"
-            });
-
-            /*
-             * IronHalo creates a 1280x720 AWT/Swing game window.
-             */
-            cheerpjCreateDisplay(1280, 720);
-
-            status.querySelector("h1").textContent = "Loading IronHalo…";
-            status.querySelector("p").textContent =
-                "Launching PaooGame.Main.";
-
-            /*
-             * Main class confirmed by the project's source:
-             * PaooGame.Main
-             */
-            const exitCode = await cheerpjRunMain(
-                "PaooGame.Main",
-                "/app/games/ironhalo/ScheletProiectPAOO.jar"
-            );
-
-            console.log("IronHalo exited with code:", exitCode);
-
-            if (exitCode !== 0) {
-                throw new Error(`IronHalo exited with code ${exitCode}.`);
-            }
-
-            status.remove();
-        } catch (error) {
-            console.error("IronHalo browser launch failed:", error);
-
-            status.classList.add("error");
-            status.innerHTML = `
-                <div>
-                    <h1>IronHalo could not start</h1>
-                    <p>
-                        ${String(error.message || error)}
-                    </p>
-                </div>
-            `;
-        }
+    function setStatus(title, message, error = false) {
+        status.classList.toggle("error", error);
+        status.innerHTML = `
+            <div>
+                <h1>${title}</h1>
+                <p>${message}</p>
+            </div>
+        `;
     }
 
-    startIronHalo();
+    /*
+     * IMPORTANT:
+     * This page must initialize CheerpJ exactly once.
+     *
+     * The error we were getting:
+     *
+     *   Required Java version 17, but CheerpJ is currently in Java 8 mode.
+     *
+     * means cheerpjRunMain() was being reached with the Java 8 runtime.
+     *
+     * CheerpJ documents Java 17 as a supported runtime and requires:
+     *
+     *   await cheerpjInit({ version: 17 });
+     *
+     * when a JAR was compiled for Java 17.
+     */
+    try {
+        if (typeof window.cheerpjInit !== "function") {
+            throw new Error("CheerpJ loader did not expose cheerpjInit().");
+        }
+
+        await window.cheerpjInit({
+            version: 17,
+            status: "splash",
+            enableDebug: true
+        });
+
+        console.info("[IronHalo] CheerpJ initialized with Java 17.");
+
+        if (typeof window.cheerpjCreateDisplay !== "function") {
+            throw new Error("CheerpJ display API is unavailable.");
+        }
+
+        window.cheerpjCreateDisplay(1280, 720);
+
+        setStatus(
+            "Loading IronHalo…",
+            "Launching PaooGame.Main from the Java 17 runtime."
+        );
+
+        if (typeof window.cheerpjRunMain !== "function") {
+            throw new Error("CheerpJ cheerpjRunMain() is unavailable.");
+        }
+
+        /*
+         * PaooGame.Main is the application's entry point.
+         * The JAR is the real file stored in this repository.
+         */
+        const exitCode = await window.cheerpjRunMain(
+            "PaooGame.Main",
+            "/app/games/ironhalo/ScheletProiectPAOO.jar"
+        );
+
+        console.info("[IronHalo] Process exited:", exitCode);
+
+        if (exitCode !== 0 && exitCode !== undefined) {
+            throw new Error(`IronHalo exited with code ${exitCode}.`);
+        }
+
+        status.remove();
+    } catch (error) {
+        console.error("[IronHalo] Browser launch failed:", error);
+
+        setStatus(
+            "IronHalo could not start",
+            `${error?.message || String(error)}<br><br>Open the browser console for the full CheerpJ diagnostic output.`,
+            true
+        );
+    }
 </script>
 </body>
 </html>
