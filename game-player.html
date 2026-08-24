@@ -65,7 +65,7 @@
                 id="game-external-link"
                 rel="noopener noreferrer"
                 target="_blank">
-                Open project
+                GitHub
             </a>
         </div>
     </header>
@@ -85,20 +85,23 @@
             title: "2D Racing Game",
             description: "C++ / SDL2 Emscripten WebAssembly build.",
             type: "browser",
-            index: "games/justdrive/index.html"
+            index: "games/justdrive/index.html",
+            external: "https://github.com/AHMarius/JustDrive"
         },
 
         racing: {
             title: "2D Racing Game",
             description: "C++ / SDL2 Emscripten WebAssembly build.",
             type: "browser",
-            index: "games/justdrive/index.html"
+            index: "games/justdrive/index.html",
+            external: "https://github.com/AHMarius/JustDrive"
         },
 
         ironhalo: {
             title: "IronHalo",
-            description: "Java desktop build. A browser-compatible runtime is not currently available on GitHub Pages.",
-            type: "desktop",
+            description: "Java browser build running through CheerpJ.",
+            type: "browser",
+            index: "games/ironhalo/index.html",
             external: "https://github.com/AHMarius/IronHalo"
         }
     };
@@ -118,69 +121,31 @@
     title.textContent = game.title;
     description.textContent = game.description;
 
-    /*
-     * Browser builds:
-     * Load only the game's own index.html. That index is responsible for
-     * loading its JS/WASM/data assets.
-     */
-    if (game.type === "browser") {
-        const frame = document.createElement("iframe");
-
-        frame.className = "game-frame";
-        frame.src = game.index;
-        frame.title = `${game.title} playable game`;
-        frame.allow = "autoplay; fullscreen; gamepad; pointer-lock";
-        frame.allowFullscreen = true;
-        frame.loading = "eager";
-        frame.setAttribute("referrerpolicy", "no-referrer");
-
-        frame.addEventListener("load", () => {
-            loading.remove();
-        });
-
-        frame.addEventListener("error", () => {
-            loading.textContent =
-                `The browser build could not be loaded from ${game.index}.`;
-        });
-
-        stage.appendChild(frame);
-    }
-
-    /*
-     * Desktop-only projects:
-     * Never request a nonexistent browser URL. Render a branded explanation
-     * and provide a real project link instead.
-     */
-    if (game.type === "desktop") {
-        loading.remove();
-
-        const fallback = document.createElement("div");
-        fallback.className = "game-stage-fallback";
-
-        fallback.innerHTML = `
-            <span class="section-eyebrow">Desktop build</span>
-            <h2>IronHalo is not available in the browser yet.</h2>
-            <p>
-                This project currently exists as a Java desktop build.
-                There is no <code>games/ironhalo/index.html</code> browser
-                build on the site, so this page will not attempt to load a
-                missing file or show a GitHub Pages 404.
-            </p>
-            <a
-                class="link-btn game-play-button"
-                href="${game.external}"
-                target="_blank"
-                rel="noopener noreferrer">
-                View IronHalo on GitHub
-            </a>
-        `;
-
-        stage.appendChild(fallback);
-
+    if (game.external) {
         externalLink.href = game.external;
-        externalLink.textContent = "GitHub";
         externalLink.hidden = false;
     }
+
+    const frame = document.createElement("iframe");
+
+    frame.className = "game-frame";
+    frame.src = game.index;
+    frame.title = `${game.title} playable game`;
+    frame.allow = "autoplay; fullscreen; gamepad; pointer-lock";
+    frame.allowFullscreen = true;
+    frame.loading = "eager";
+    frame.setAttribute("referrerpolicy", "no-referrer");
+
+    frame.addEventListener("load", () => {
+        loading.remove();
+    });
+
+    frame.addEventListener("error", () => {
+        loading.textContent =
+            `The browser build could not be loaded from ${game.index}.`;
+    });
+
+    stage.appendChild(frame);
 </script>
 
 <script src="script.js"></script>
