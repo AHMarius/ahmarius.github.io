@@ -1,18 +1,20 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IronHalo — Browser Build</title>
+
     <script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
+
     <style>
         html,
         body {
             margin: 0;
             width: 100%;
             min-height: 100%;
-            overflow: hidden;
             background: #000;
+            overflow: hidden;
         }
 
         body {
@@ -28,62 +30,94 @@
             display: grid;
             place-items: center;
             padding: 24px;
+            box-sizing: border-box;
             color: #fff;
             background: #000;
-            font: 16px/1.5 "Segoe UI", sans-serif;
+            font: 16px/1.5 "Segoe UI", Arial, sans-serif;
             text-align: center;
         }
 
         #status.error {
             color: #ffb4a8;
         }
-    </style>
-</head>
-<body>
-    <div id="status">Starting IronHalo…</div>
 
-    <script>
-        const status = document.getElementById("status");
-
-        async function startIronHalo() {
-            try {
-                /*
-                 * Main entry point verified from the IronHalo source:
-                 * PaooGame.Main -> Game.getInstance().init(...) -> StartGame()
-                 */
-                await cheerpjInit();
-
-                /*
-                 * IronHalo uses a Java AWT/Swing JFrame + Canvas at 1280x720.
-                 * CheerpJ provides the browser display surface for those GUI APIs.
-                 */
-                cheerpjCreateDisplay(1280, 720);
-
-                status.textContent = "Loading IronHalo…";
-
-                await cheerpjRunMain(
-                    "PaooGame.Main",
-                    "/app/games/ironhalo/ScheletProiectPAOO.jar"
-                );
-
-                status.remove();
-            } catch (error) {
-                console.error("IronHalo browser launch failed:", error);
-
-                status.classList.add("error");
-                status.innerHTML = `
-                    <div>
-                        <h1>IronHalo could not start</h1>
-                        <p>
-                            The Java browser runtime failed while loading the game.
-                            Check the browser console for the exact error.
-                        </p>
-                    </div>
-                `;
-            }
+        #status h1 {
+            margin: 0 0 10px;
+            font-size: 1.5rem;
         }
 
-        startIronHalo();
-    </script>
+        #status p {
+            max-width: 650px;
+            margin: 0 auto;
+            color: rgba(255, 255, 255, 0.78);
+        }
+    </style>
+</head>
+
+<body>
+<div id="status">
+    <div>
+        <h1>Starting IronHalo…</h1>
+        <p>Initializing the Java 17 browser runtime.</p>
+    </div>
+</div>
+
+<script>
+    const status = document.getElementById("status");
+
+    async function startIronHalo() {
+        try {
+            /*
+             * The JAR was compiled for Java 17.
+             * CheerpJ defaults to Java 8 unless version 17 is explicitly
+             * requested, which was the cause of the reported error.
+             */
+            await cheerpjInit({
+                version: 17,
+                status: "none"
+            });
+
+            /*
+             * IronHalo creates a 1280x720 AWT/Swing game window.
+             */
+            cheerpjCreateDisplay(1280, 720);
+
+            status.querySelector("h1").textContent = "Loading IronHalo…";
+            status.querySelector("p").textContent =
+                "Launching PaooGame.Main.";
+
+            /*
+             * Main class confirmed by the project's source:
+             * PaooGame.Main
+             */
+            const exitCode = await cheerpjRunMain(
+                "PaooGame.Main",
+                "/app/games/ironhalo/ScheletProiectPAOO.jar"
+            );
+
+            console.log("IronHalo exited with code:", exitCode);
+
+            if (exitCode !== 0) {
+                throw new Error(`IronHalo exited with code ${exitCode}.`);
+            }
+
+            status.remove();
+        } catch (error) {
+            console.error("IronHalo browser launch failed:", error);
+
+            status.classList.add("error");
+            status.innerHTML = `
+                <div>
+                    <h1>IronHalo could not start</h1>
+                    <p>
+                        ${String(error.message || error)}
+                    </p>
+                </div>
+            `;
+        }
+    }
+
+    startIronHalo();
+</script>
 </body>
 </html>

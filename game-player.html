@@ -57,7 +57,6 @@
 
         <div class="game-player-actions">
             <a class="link-btn" href="games.html">All games</a>
-
             <a
                 class="link-btn"
                 hidden
@@ -80,11 +79,15 @@
 </main>
 
 <script>
+    /*
+     * Browser entry points:
+     * - C++/Emscripten games use their own index.html.
+     * - IronHalo uses CheerpJ from games/ironhalo/index.html.
+     */
     const GAME_CONFIG = {
         justdrive: {
             title: "2D Racing Game",
             description: "C++ / SDL2 Emscripten WebAssembly build.",
-            type: "browser",
             index: "games/justdrive/index.html",
             external: "https://github.com/AHMarius/JustDrive"
         },
@@ -92,15 +95,13 @@
         racing: {
             title: "2D Racing Game",
             description: "C++ / SDL2 Emscripten WebAssembly build.",
-            type: "browser",
             index: "games/justdrive/index.html",
             external: "https://github.com/AHMarius/JustDrive"
         },
 
         ironhalo: {
             title: "IronHalo",
-            description: "Java browser build running through CheerpJ.",
-            type: "browser",
+            description: "Java build running in the browser through CheerpJ.",
             index: "games/ironhalo/index.html",
             external: "https://github.com/AHMarius/IronHalo"
         }
@@ -131,7 +132,11 @@
     frame.className = "game-frame";
     frame.src = game.index;
     frame.title = `${game.title} playable game`;
-    frame.allow = "autoplay; fullscreen; gamepad; pointer-lock";
+
+    /* Firefox was warning about unsupported Feature Policy names here.
+       They are unnecessary for the current player, so keep only supported
+       permissions that are actually useful. */
+    frame.allow = "fullscreen; gamepad";
     frame.allowFullscreen = true;
     frame.loading = "eager";
     frame.setAttribute("referrerpolicy", "no-referrer");
@@ -146,8 +151,33 @@
     });
 
     stage.appendChild(frame);
-</script>
 
-<script src="script.js"></script>
+    /*
+     * Keep the game-player page self-contained.
+     * script.js contains site-wide hooks for elements that do not exist on
+     * this page, which produced the countEl/statusEl "null" console errors.
+     */
+    const hamburger = document.getElementById("hamburger-btn");
+    const mobileMenu = document.getElementById("mobile-menu");
+
+    hamburger.addEventListener("click", () => {
+        const isOpen = hamburger.classList.toggle("is-open");
+        hamburger.setAttribute("aria-expanded", String(isOpen));
+
+        if (isOpen) {
+            mobileMenu.removeAttribute("hidden");
+        } else {
+            mobileMenu.setAttribute("hidden", "");
+        }
+    });
+
+    mobileMenu.addEventListener("click", (event) => {
+        if (event.target.closest("a")) {
+            hamburger.classList.remove("is-open");
+            hamburger.setAttribute("aria-expanded", "false");
+            mobileMenu.setAttribute("hidden", "");
+        }
+    });
+</script>
 </body>
 </html>
