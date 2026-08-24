@@ -1,0 +1,3 @@
+/home/alexmarius/JustDrive/SDL_GameTemplate/SDL_GameTemplate/build-web/CMakeFiles/JustDrive.dir
+/home/alexmarius/JustDrive/SDL_GameTemplate/SDL_GameTemplate/build-web/CMakeFiles/edit_cache.dir
+/home/alexmarius/JustDrive/SDL_GameTemplate/SDL_GameTemplate/build-web/CMakeFiles/rebuild_cache.dir

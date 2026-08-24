@@ -5,10 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="About Alexandru-Marius Hrițcu — background, focus areas, and technologies.">
     <title>About — Alexandru-Marius Hrițcu</title>
-     <link rel="stylesheet" href="style.css">
+    <link rel="canonical" href="https://ahmarius.github.io/about.html">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <meta name="theme-color" content="#000000">
+
+    <meta property="og:type" content="profile">
+    <meta property="og:title" content="About — Alexandru-Marius Hrițcu">
+    <meta property="og:description" content="About Alexandru-Marius Hrițcu — background, focus areas, and technologies.">
+    <meta property="og:url" content="https://ahmarius.github.io/about.html">
+    <meta property="og:image" content="https://ahmarius.github.io/ME.jpeg">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="About — Alexandru-Marius Hrițcu">
+    <meta name="twitter:description" content="About Alexandru-Marius Hrițcu — background, focus areas, and technologies.">
+
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
     <video
         id="bgVideo"
@@ -17,6 +32,7 @@
         loop
         playsinline
         disablepictureinpicture
+        poster="video-poster.jpg"
         controlslist="nodownload noplaybackrate noremoteplayback">
         <source src="video.mp4" type="video/mp4">
     </video>
@@ -36,6 +52,8 @@
         <ul id="mobile-menu" class="mobile-menu" hidden>
             <li><a href="index.html">Home</a></li>
             <li><a href="projects.html">Projects</a></li>
+            <li><a href="games.html">Games</a></li>
+            <li><a href="#contact">Contact</a></li>
         </ul>
     </nav>
 
@@ -43,7 +61,7 @@
         <h1>About</h1>
     </header>
 
-    <main class="about">
+    <main class="about" id="main-content">
         <div class="about-inner">
 
             <span class="section-eyebrow">Background</span>
@@ -208,6 +226,7 @@
             <div class="about-block">
                 <h3 class="about-subheading">Selected highlights</h3>
                 <div class="highlight-links">
+                    <a class="link-btn-light" href="games.html">Play My Games</a>
                     <a class="link-btn-light" href="projects.html#project-traffic-optimisation">Traffic Optimization Platform</a>
                     <a class="link-btn-light" href="projects.html#project-ironhalo">IronHalo</a>
                     <a class="link-btn-light" href="projects.html#project-fluid-dynamics">Fluid Dynamics</a>
@@ -218,8 +237,19 @@
 
             <!-- ============ SOCIALS / PLATFORMS ============
                  Replace href="#" placeholders with real profile URLs. -->
-            <div class="about-block">
+            <div class="about-block" id="contact">
                 <h3 class="about-subheading">Find me elsewhere</h3>
+
+                <p class="contact-email-row">
+                    <a class="contact-email-link" href="mailto:hritcualex862@gmail.com">hritcualex862@gmail.com</a>
+                    <button
+                        type="button"
+                        class="copy-email-btn"
+                        data-copy-email="hritcualex862@gmail.com"
+                        aria-label="Copy email address">
+                        Copy
+                    </button>
+                </p>
 
                 <div class="socials-grid">
                     <a class="social-link" href="https://github.com/ahmarius" target="_blank" rel="noopener noreferrer" aria-label="GitHub">

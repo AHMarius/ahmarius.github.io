@@ -1,0 +1,10 @@
+{
+  "type": "TORPEDO",
+  "detectionRadius": 400,
+  "attackRange": 340,
+  "fleeHealthPct": 0.2,
+  "speed": 60,
+  "aggression": 0.4,
+  "supportRadius": 10,
+  "kamikazeChance": 0.05
+}

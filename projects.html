@@ -3,13 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Projects</title>
+    <title>Projects — Alexandru-Marius Hrițcu</title>
+    <meta name="description" content="A chronological feed of Alexandru-Marius Hrițcu's software projects: games, simulations, distributed systems, and FPGA work.">
+    <link rel="canonical" href="https://ahmarius.github.io/projects.html">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <meta name="theme-color" content="#000000">
 
-    <!-- Stylesheet not written yet — link left in place for when it's ready -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Projects — Alexandru-Marius Hrițcu">
+    <meta property="og:description" content="A chronological feed of Alexandru-Marius Hrițcu's software projects: games, simulations, distributed systems, and FPGA work.">
+    <meta property="og:url" content="https://ahmarius.github.io/projects.html">
+    <meta property="og:image" content="https://ahmarius.github.io/ME.jpeg">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Projects — Alexandru-Marius Hrițcu">
+    <meta name="twitter:description" content="A chronological feed of Alexandru-Marius Hrițcu's software projects.">
+
     <link rel="stylesheet" href="style.css">
+    <link rel="preload" href="video-poster.jpg" as="image">
+
+    <script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "Projects — Alexandru-Marius Hrițcu",
+    "url": "https://ahmarius.github.io/projects.html",
+    "about": "A chronological feed of software, game development, graphics, simulation and AI projects.",
+    "isPartOf": {
+        "@type": "WebSite",
+        "name": "Alexandru-Marius Hrițcu — Digital CV",
+        "url": "https://ahmarius.github.io/"
+    }
+}
+    </script>
 </head>
 
 <body>
+
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
     <video
     id="bgVideo"
@@ -18,6 +48,7 @@
     loop
     playsinline
     disablepictureinpicture
+    poster="video-poster.jpg"
     controlslist="nodownload noplaybackrate noremoteplayback"
 >
     <source src="video.mp4" type="video/mp4">
@@ -36,8 +67,9 @@
 
         <ul id="mobile-menu" class="mobile-menu" hidden>
             <li><a href="index.html">Home</a></li>
-            <li><a href="#project-feed">Projects</a></li>
-            <li><a href="index.html#contact">Contact</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="games.html">Games</a></li>
+            <li><a href="about.html#contact">Contact</a></li>
         </ul>
     </nav>
 
@@ -45,8 +77,13 @@
         <h1>My Projects</h1>
     </header>
 
+    <p class="section-intro">
+        A chronological archive of games, graphics, simulation, AI, systems and experimental projects
+        — use the search box below to filter by name, technology, or status.
+    </p>
+
     <!-- ============ PROJECT FEED (chronological, oldest → newest) ============ -->
-    <main id="project-feed" class="project-feed">
+    <main id="main-content" class="project-feed">
 
         <!-- ===================================================== -->
         <!-- Nov 2021 -->

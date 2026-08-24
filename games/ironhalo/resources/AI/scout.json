@@ -1,0 +1,10 @@
+{
+  "type": "SCOUT",
+  "detectionRadius": 500,
+  "attackRange": 350,
+  "fleeHealthPct": 0.25,
+  "speed": 200,
+  "aggression": 0.6,
+  "supportRadius": 15,
+  "kamikazeChance": 0.55
+}

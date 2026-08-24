@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="Browser game player for Alexandru-Marius Hrițcu projects." name="description"/>
+<title>Game Player — Alexandru-Marius Hrițcu</title>
+<link href="style.css" rel="stylesheet"/>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<video autoplay="" controlslist="nodownload noplaybackrate noremoteplayback" disablepictureinpicture="" id="bgVideo" loop="" muted="" playsinline="" poster="video-poster.jpg">
+<source src="video.mp4" type="video/mp4"/>
+</video>
+<nav aria-label="Primary navigation" class="topnav">
+<div class="topnav-inner">
+<span class="site-logo">DIGITAL CV</span>
+<button aria-controls="mobile-menu" aria-expanded="false" aria-label="Toggle menu" class="hamburger-btn" id="hamburger-btn">
+<span class="hamburger-bar"></span>
+<span class="hamburger-bar"></span>
+<span class="hamburger-bar"></span>
+</button>
+</div>
+<ul class="mobile-menu" hidden="" id="mobile-menu">
+<li><a href="index.html">Home</a></li>
+<li><a href="projects.html">Projects</a></li>
+<li><a href="about.html">About</a></li>
+<li><a href="games.html">Games</a></li>
+</ul>
+</nav>
+<main class="game-player-page" id="main-content">
+<header class="game-player-header">
+<div>
+<span class="section-eyebrow">Browser player</span>
+<h1 id="game-title">Loading game…</h1>
+<p id="game-description"></p>
+</div>
+<div class="game-player-actions">
+<a class="link-btn" href="games.html">All games</a>
+<a class="link-btn" hidden="" href="#" id="game-external-link" rel="noopener noreferrer" target="_blank">
+                    Open external release
+                </a>
+</div>
+</header>
+<section aria-label="Game viewport" class="game-stage-shell">
+<div class="game-stage" id="game-stage">
+<div class="game-stage-loading" id="game-loading">
+                    Preparing browser player…
+                </div>
+</div>
+</section>
+
+</main>
+<script>
+        const GAME_CONFIG = {
+            justdrive: {
+                title: "2D Racing Game",
+                description: "C++ / SDL2 Emscripten WebAssembly build.",
+                index: "games/justdrive/index.html"
+            },
+            racing: {
+                title: "2D Racing Game",
+                description: "C++ / SDL2 Emscripten WebAssembly build.",
+                index: "games/justdrive/index.html"
+            },
+            ironhalo: {
+                title: "IronHalo",
+                description: "Java desktop build prepared for browser integration.",
+                index: "games/ironhalo/index.html"
+            }
+        };
+
+        const key = new URLSearchParams(window.location.search).get("game") || "justdrive";
+        const game = GAME_CONFIG[key] || GAME_CONFIG.justdrive;
+
+        document.title = `${game.title} — Game Player`;
+        document.getElementById("game-title").textContent = game.title;
+        document.getElementById("game-description").textContent = game.description;
+
+        const stage = document.getElementById("game-stage");
+        const loading = document.getElementById("game-loading");
+
+        // The player references ONLY the game's index.html.
+        // That index.html is responsible for loading its own JS/WASM/DATA.
+        const frame = document.createElement("iframe");
+        frame.className = "game-frame";
+        frame.src = game.index;
+        frame.title = `${game.title} playable game`;
+        frame.allow = "autoplay; fullscreen; gamepad; pointer-lock";
+        frame.allowFullscreen = true;
+        frame.loading = "eager";
+        frame.setAttribute("referrerpolicy", "no-referrer");
+
+        frame.addEventListener("load", () => {
+            loading.remove();
+        });
+
+        frame.addEventListener("error", () => {
+            loading.textContent =
+                `The browser build could not be loaded from ${game.index}.`;
+        });
+
+        stage.appendChild(frame);
+
+        document.getElementById("game-help").textContent =
+            `Loading the game directly from ${game.index}.`;
+        </script>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,4 +1,3 @@
-html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,8 +5,46 @@ html
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Alexandru-Marius Hrițcu — Computer Science student, software engineer, digital CV.">
     <title>Alexandru-Marius Hrițcu — Digital CV</title>
+    <link rel="canonical" href="https://ahmarius.github.io/">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <meta name="theme-color" content="#000000">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Alexandru-Marius Hrițcu — Digital CV">
+    <meta property="og:description" content="Computer Science student, software engineer, digital CV.">
+    <meta property="og:url" content="https://ahmarius.github.io/">
+    <meta property="og:image" content="https://ahmarius.github.io/ME.jpeg">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Alexandru-Marius Hrițcu — Digital CV">
+    <meta name="twitter:description" content="Computer Science student, software engineer, digital CV.">
+    <meta name="twitter:image" content="https://ahmarius.github.io/ME.jpeg">
+
     <link rel="stylesheet" href="style.css">
+    <link rel="preload" href="ME.jpeg" as="image" fetchpriority="high">
+    <link rel="preload" href="video-poster.jpg" as="image">
     <script defer src="https://cloud.umami.is/script.js" data-website-id="2797aa09-f61a-4918-81c6-407ee5c2baaf"></script>
+
+    <script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": "Alexandru-Marius Hrițcu",
+    "url": "https://ahmarius.github.io/",
+    "image": "https://ahmarius.github.io/ME.jpeg",
+    "jobTitle": "Software Engineering Student",
+    "alumniOf": {
+        "@type": "CollegeOrUniversity",
+        "name": "Technical University of Iași"
+    },
+    "sameAs": [
+        "https://github.com/ahmarius",
+        "https://www.linkedin.com/in/alexandru-marius-hrițcu-018578421",
+        "https://alexmh05.itch.io",
+        "https://www.youtube.com/@ticklishseahorse",
+        "https://www.instagram.com/a_mariuuus"
+    ]
+}
+    </script>
 
     <style>
         /* ===== CV REQUEST MODAL ===== */
@@ -238,6 +275,8 @@ html
 
 <body>
 
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
     <video
         id="bgVideo"
         autoplay
@@ -245,6 +284,7 @@ html
         loop
         playsinline
         disablepictureinpicture
+        poster="video-poster.jpg"
         controlslist="nodownload noplaybackrate noremoteplayback">
         <source src="video.mp4" type="video/mp4">
     </video>
@@ -254,6 +294,7 @@ html
 
         <ul class="nav-links" id="navLinks">
             <li><a href="projects.html">Projects</a></li>
+            <li><a href="games.html">Games</a></li>
             <li><a href="cv.pdf">CV</a></li>
             <li><a href="about.html">About</a></li>
         </ul>
@@ -270,15 +311,16 @@ html
         </button>
     </nav>
 
-    <main class="hero">
+    <main class="hero" id="main-content">
 
         <div class="hero-layout">
 
             <div class="hero-image">
                 <img
                     src="ME.jpeg"
-                    alt="Alexandru-Marius Hrițcu"
-                    class="hero-photo">
+                    alt="Portrait photo of Alexandru-Marius Hrițcu"
+                    class="hero-photo"
+                    fetchpriority="high">
             </div>
 
             <div class="hero-content">
@@ -300,6 +342,14 @@ html
                 </p>
 
                 <div class="hero-buttons">
+                    <button
+                        class="secondary-btn"
+                        type="button"
+                        onclick="location.href='games.html'">
+                        Play Games
+                    </button>
+
+
 
                     <button
                         class="primary-btn"
@@ -361,7 +411,14 @@ html
                 To help me keep track of CV requests and avoid unintended
                 distribution, please provide your email address.
                 This will open a pre-filled email addressed to
-                <strong>hritcualex862@gmail.com</strong>.
+                <strong>hritcualex862@gmail.com</strong>
+                <button
+                    type="button"
+                    class="copy-email-btn"
+                    data-copy-email="hritcualex862@gmail.com"
+                    aria-label="Copy email address">
+                    Copy
+                </button>.
             </p>
 
             <form id="cvRequestForm">
@@ -413,6 +470,28 @@ html
 
 
     <script>
+        /* ===== REDUCED MOTION ===== */
+
+        (function () {
+            const video = document.getElementById('bgVideo');
+            if (!video) return;
+
+            const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+            function applyPreference(matches) {
+                if (matches) {
+                    video.pause();
+                    video.removeAttribute('autoplay');
+                } else if (video.paused) {
+                    video.play().catch(() => {});
+                }
+            }
+
+            applyPreference(query.matches);
+            query.addEventListener('change', (e) => applyPreference(e.matches));
+        })();
+
+
         /* ===== NAVIGATION ===== */
 
         const navToggle = document.getElementById('navToggle');

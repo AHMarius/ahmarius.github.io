@@ -1,0 +1,1 @@
+/home/alexmarius/emsdk/upstream/emscripten/em++ -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -sUSE_SDL_TTF=2 -sSDL2_IMAGE_FORMATS=png --preload-file=/home/alexmarius/JustDrive/SDL_GameTemplate/SDL_GameTemplate/assets@assets @CMakeFiles/JustDrive.dir/objects1.rsp -o index.html
