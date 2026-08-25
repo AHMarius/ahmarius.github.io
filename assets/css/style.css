@@ -733,6 +733,22 @@ nav {
   letter-spacing: -0.04em;
 }
 
+.visitor-badge {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: 32px;
+  margin: 0 0 10px;
+  border-radius: 6px;
+  object-fit: contain;
+  object-position: left center;
+  filter: grayscale(1) contrast(0.88) brightness(0.82);
+}
+
+:root[data-theme="dark"] .visitor-badge {
+  filter: grayscale(1) contrast(0.9) brightness(1.55);
+}
+
 .stat span {
   color: var(--color-text-light);
   font-size: 0.82rem;
