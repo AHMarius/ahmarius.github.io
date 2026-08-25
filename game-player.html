@@ -1,183 +1,178 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Browser game player for Alexandru-Marius Hrițcu projects.">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Browser game player for Alexandru-Marius Hrițcu projects."
+    />
     <title>Game Player — Alexandru-Marius Hrițcu</title>
-    <link rel="stylesheet" href="style.css">
-</head>
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <script defer src="assets/js/hero-fluid.js"></script>
+  </head>
 
-<body>
-<a class="skip-link" href="#main-content">Skip to main content</a>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
 
-<video
-    autoplay
-    muted
-    loop
-    playsinline
-    disablepictureinpicture
-    id="bgVideo"
-    poster="video-poster.jpg"
-    controlslist="nodownload noplaybackrate noremoteplayback">
-    <source src="video.mp4" type="video/mp4">
-</video>
+    <canvas id="hero-fluid" aria-hidden="true"></canvas>
 
-<nav aria-label="Primary navigation" class="topnav">
-    <div class="topnav-inner">
+    <nav aria-label="Primary navigation" class="topnav">
+      <div class="topnav-inner">
         <span class="site-logo">DIGITAL CV</span>
 
         <button
-            aria-controls="mobile-menu"
-            aria-expanded="false"
-            aria-label="Toggle menu"
-            class="hamburger-btn"
-            id="hamburger-btn">
-            <span class="hamburger-bar"></span>
-            <span class="hamburger-bar"></span>
-            <span class="hamburger-bar"></span>
+          aria-controls="mobile-menu"
+          aria-expanded="false"
+          aria-label="Toggle menu"
+          class="hamburger-btn"
+          id="hamburger-btn"
+        >
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
         </button>
-    </div>
+      </div>
 
-    <ul class="mobile-menu" hidden id="mobile-menu">
+      <ul class="mobile-menu" hidden id="mobile-menu">
         <li><a href="index.html">Home</a></li>
         <li><a href="projects.html">Projects</a></li>
         <li><a href="about.html">About</a></li>
         <li><a href="games.html">Games</a></li>
-    </ul>
-</nav>
+      </ul>
+    </nav>
 
-<main class="game-player-page" id="main-content">
-    <header class="game-player-header">
+    <main class="game-player-page" id="main-content">
+      <header class="game-player-header">
         <div>
-            <span class="section-eyebrow">Browser player</span>
-            <h1 id="game-title">Loading game…</h1>
-            <p id="game-description"></p>
+          <span class="section-eyebrow">Browser player</span>
+          <h1 id="game-title">Loading game…</h1>
+          <p id="game-description"></p>
         </div>
 
         <div class="game-player-actions">
-            <a class="link-btn" href="games.html">All games</a>
-            <a
-                class="link-btn"
-                hidden
-                href="#"
-                id="game-external-link"
-                rel="noopener noreferrer"
-                target="_blank">
-                GitHub
-            </a>
+          <a class="link-btn" href="games.html">All games</a>
+          <a
+            class="link-btn"
+            hidden
+            href="#"
+            id="game-external-link"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            GitHub
+          </a>
         </div>
-    </header>
+      </header>
 
-    <section aria-label="Game viewport" class="game-stage-shell">
+      <section aria-label="Game viewport" class="game-stage-shell">
         <div class="game-stage" id="game-stage">
-            <div class="game-stage-loading" id="game-loading">
-                Preparing browser player…
-            </div>
+          <div class="game-stage-loading" id="game-loading">
+            Preparing browser player…
+          </div>
         </div>
-    </section>
-</main>
+      </section>
+    </main>
 
-<script>
-    /*
-     * Browser entry points:
-     * - C++/Emscripten games use their own index.html.
-     * - IronHalo uses CheerpJ from games/ironhalo/index.html.
-     */
-    const GAME_CONFIG = {
+    <script>
+      /*
+       * Browser entry points:
+       * - C++/Emscripten games use their own index.html.
+       * - IronHalo uses CheerpJ from games/ironhalo/index.html.
+       */
+      const GAME_CONFIG = {
         justdrive: {
-            title: "2D Racing Game",
-            description: "C++ / SDL2 Emscripten WebAssembly build.",
-            index: "games/justdrive/index.html",
-            external: "https://github.com/AHMarius/JustDrive"
+          title: "2D Racing Game",
+          description: "C++ / SDL2 Emscripten WebAssembly build.",
+          index: "games/justdrive/index.html",
+          external: "https://github.com/AHMarius/JustDrive",
         },
 
         racing: {
-            title: "2D Racing Game",
-            description: "C++ / SDL2 Emscripten WebAssembly build.",
-            index: "games/justdrive/index.html",
-            external: "https://github.com/AHMarius/JustDrive"
+          title: "2D Racing Game",
+          description: "C++ / SDL2 Emscripten WebAssembly build.",
+          index: "games/justdrive/index.html",
+          external: "https://github.com/AHMarius/JustDrive",
         },
 
         ironhalo: {
-            title: "IronHalo",
-            description: "Java build running in the browser through CheerpJ.",
-            index: "games/ironhalo/index.html",
-            external: "https://github.com/AHMarius/IronHalo"
-        }
-    };
+          title: "IronHalo",
+          description: "Java build running in the browser through CheerpJ.",
+          index: "games/ironhalo/index.html",
+          external: "https://github.com/AHMarius/IronHalo",
+        },
+      };
 
-    const key =
+      const key =
         new URLSearchParams(window.location.search).get("game") || "justdrive";
 
-    const game = GAME_CONFIG[key] || GAME_CONFIG.justdrive;
+      const game = GAME_CONFIG[key] || GAME_CONFIG.justdrive;
 
-    const title = document.getElementById("game-title");
-    const description = document.getElementById("game-description");
-    const stage = document.getElementById("game-stage");
-    const loading = document.getElementById("game-loading");
-    const externalLink = document.getElementById("game-external-link");
+      const title = document.getElementById("game-title");
+      const description = document.getElementById("game-description");
+      const stage = document.getElementById("game-stage");
+      const loading = document.getElementById("game-loading");
+      const externalLink = document.getElementById("game-external-link");
 
-    document.title = `${game.title} — Game Player`;
-    title.textContent = game.title;
-    description.textContent = game.description;
+      document.title = `${game.title} — Game Player`;
+      title.textContent = game.title;
+      description.textContent = game.description;
 
-    if (game.external) {
+      if (game.external) {
         externalLink.href = game.external;
         externalLink.hidden = false;
-    }
+      }
 
-    const frame = document.createElement("iframe");
+      const frame = document.createElement("iframe");
 
-    frame.className = "game-frame";
-    frame.src = game.index;
-    frame.title = `${game.title} playable game`;
+      frame.className = "game-frame";
+      frame.src = game.index;
+      frame.title = `${game.title} playable game`;
 
-    /* Firefox was warning about unsupported Feature Policy names here.
+      /* Firefox was warning about unsupported Feature Policy names here.
        They are unnecessary for the current player, so keep only supported
        permissions that are actually useful. */
-    frame.allow = "fullscreen; gamepad";
-    frame.allowFullscreen = true;
-    frame.loading = "eager";
-    frame.setAttribute("referrerpolicy", "no-referrer");
+      frame.allow = "fullscreen; gamepad";
+      frame.allowFullscreen = true;
+      frame.loading = "eager";
+      frame.setAttribute("referrerpolicy", "no-referrer");
 
-    frame.addEventListener("load", () => {
+      frame.addEventListener("load", () => {
         loading.remove();
-    });
+      });
 
-    frame.addEventListener("error", () => {
-        loading.textContent =
-            `The browser build could not be loaded from ${game.index}.`;
-    });
+      frame.addEventListener("error", () => {
+        loading.textContent = `The browser build could not be loaded from ${game.index}.`;
+      });
 
-    stage.appendChild(frame);
+      stage.appendChild(frame);
 
-    /*
-     * Keep the game-player page self-contained.
-     * script.js contains site-wide hooks for elements that do not exist on
-     * this page, which produced the countEl/statusEl "null" console errors.
-     */
-    const hamburger = document.getElementById("hamburger-btn");
-    const mobileMenu = document.getElementById("mobile-menu");
+      /*
+       * Keep the game-player page self-contained.
+       * assets/js/script.js contains site-wide hooks for elements that do not exist on
+       * this page, which produced the countEl/statusEl "null" console errors.
+       */
+      const hamburger = document.getElementById("hamburger-btn");
+      const mobileMenu = document.getElementById("mobile-menu");
 
-    hamburger.addEventListener("click", () => {
+      hamburger.addEventListener("click", () => {
         const isOpen = hamburger.classList.toggle("is-open");
         hamburger.setAttribute("aria-expanded", String(isOpen));
 
         if (isOpen) {
-            mobileMenu.removeAttribute("hidden");
+          mobileMenu.removeAttribute("hidden");
         } else {
-            mobileMenu.setAttribute("hidden", "");
+          mobileMenu.setAttribute("hidden", "");
         }
-    });
+      });
 
-    mobileMenu.addEventListener("click", (event) => {
+      mobileMenu.addEventListener("click", (event) => {
         if (event.target.closest("a")) {
-            hamburger.classList.remove("is-open");
-            hamburger.setAttribute("aria-expanded", "false");
-            mobileMenu.setAttribute("hidden", "");
+          hamburger.classList.remove("is-open");
+          hamburger.setAttribute("aria-expanded", "false");
+          mobileMenu.setAttribute("hidden", "");
         }
-    });
-</script>
-</body>
+      });
+    </script>
+  </body>
 </html>

@@ -1,0 +1,6 @@
+.idea/
+
+games/justdrive/CMakeCache.txt
+games/justdrive/CMakeFiles/
+games/justdrive/Makefile
+games/justdrive/cmake_install.cmake

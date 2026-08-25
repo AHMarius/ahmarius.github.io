@@ -1,72 +1,75 @@
 <!doctype html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>IronHalo — Browser Build</title>
 
     <!-- CheerpJ 4.3: supports Java 8, 11 and 17. -->
     <script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
 
     <style>
-        html,
-        body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
-            overflow: hidden;
-        }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
 
-        body {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
 
-        #status {
-            position: fixed;
-            inset: 0;
-            z-index: 10;
-            display: grid;
-            place-items: center;
-            padding: 24px;
-            box-sizing: border-box;
-            color: #fff;
-            background: #000;
-            font: 16px/1.5 "Segoe UI", Arial, sans-serif;
-            text-align: center;
-        }
+      #status {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+        color: #fff;
+        background: #000;
+        font:
+          16px/1.5 "Segoe UI",
+          Arial,
+          sans-serif;
+        text-align: center;
+      }
 
-        #status.error {
-            color: #ffb4a8;
-        }
+      #status.error {
+        color: #ffb4a8;
+      }
 
-        #status h1 {
-            margin: 0 0 10px;
-            font-size: 1.45rem;
-        }
+      #status h1 {
+        margin: 0 0 10px;
+        font-size: 1.45rem;
+      }
 
-        #status p {
-            max-width: 700px;
-            margin: 0 auto;
-            color: rgba(255, 255, 255, 0.78);
-        }
+      #status p {
+        max-width: 700px;
+        margin: 0 auto;
+        color: rgba(255, 255, 255, 0.78);
+      }
     </style>
-</head>
+  </head>
 
-<body>
-<div id="status">
-    <div>
+  <body>
+    <div id="status">
+      <div>
         <h1>Starting IronHalo…</h1>
         <p>Initializing the Java 17 runtime.</p>
+      </div>
     </div>
-</div>
 
-<script type="module">
-    const status = document.getElementById("status");
+    <script type="module">
+      const status = document.getElementById("status");
 
-    function setStatus(title, message, error = false) {
+      function setStatus(title, message, error = false) {
         status.classList.toggle("error", error);
         status.innerHTML = `
             <div>
@@ -74,50 +77,50 @@
                 <p>${message}</p>
             </div>
         `;
-    }
+      }
 
-    /*
-     * IMPORTANT:
-     * This page must initialize CheerpJ exactly once.
-     *
-     * The error we were getting:
-     *
-     *   Required Java version 17, but CheerpJ is currently in Java 8 mode.
-     *
-     * means cheerpjRunMain() was being reached with the Java 8 runtime.
-     *
-     * CheerpJ documents Java 17 as a supported runtime and requires:
-     *
-     *   await cheerpjInit({ version: 17 });
-     *
-     * when a JAR was compiled for Java 17.
-     */
-    try {
+      /*
+       * IMPORTANT:
+       * This page must initialize CheerpJ exactly once.
+       *
+       * The error we were getting:
+       *
+       *   Required Java version 17, but CheerpJ is currently in Java 8 mode.
+       *
+       * means cheerpjRunMain() was being reached with the Java 8 runtime.
+       *
+       * CheerpJ documents Java 17 as a supported runtime and requires:
+       *
+       *   await cheerpjInit({ version: 17 });
+       *
+       * when a JAR was compiled for Java 17.
+       */
+      try {
         if (typeof window.cheerpjInit !== "function") {
-            throw new Error("CheerpJ loader did not expose cheerpjInit().");
+          throw new Error("CheerpJ loader did not expose cheerpjInit().");
         }
 
         await window.cheerpjInit({
-            version: 17,
-            status: "splash",
-            enableDebug: true
+          version: 17,
+          status: "splash",
+          enableDebug: true,
         });
 
         console.info("[IronHalo] CheerpJ initialized with Java 17.");
 
         if (typeof window.cheerpjCreateDisplay !== "function") {
-            throw new Error("CheerpJ display API is unavailable.");
+          throw new Error("CheerpJ display API is unavailable.");
         }
 
         window.cheerpjCreateDisplay(1280, 720);
 
         setStatus(
-            "Loading IronHalo…",
-            "Launching PaooGame.Main from the Java 17 runtime."
+          "Loading IronHalo…",
+          "Launching PaooGame.Main from the Java 17 runtime.",
         );
 
         if (typeof window.cheerpjRunMain !== "function") {
-            throw new Error("CheerpJ cheerpjRunMain() is unavailable.");
+          throw new Error("CheerpJ cheerpjRunMain() is unavailable.");
         }
 
         /*
@@ -125,26 +128,26 @@
          * The JAR is the real file stored in this repository.
          */
         const exitCode = await window.cheerpjRunMain(
-            "PaooGame.Main",
-            "/app/games/ironhalo/ScheletProiectPAOO.jar"
+          "PaooGame.Main",
+          "/app/games/ironhalo/ScheletProiectPAOO.jar",
         );
 
         console.info("[IronHalo] Process exited:", exitCode);
 
         if (exitCode !== 0 && exitCode !== undefined) {
-            throw new Error(`IronHalo exited with code ${exitCode}.`);
+          throw new Error(`IronHalo exited with code ${exitCode}.`);
         }
 
         status.remove();
-    } catch (error) {
+      } catch (error) {
         console.error("[IronHalo] Browser launch failed:", error);
 
         setStatus(
-            "IronHalo could not start",
-            `${error?.message || String(error)}<br><br>Open the browser console for the full CheerpJ diagnostic output.`,
-            true
+          "IronHalo could not start",
+          `${error?.message || String(error)}<br><br>Open the browser console for the full CheerpJ diagnostic output.`,
+          true,
         );
-    }
-</script>
-</body>
+      }
+    </script>
+  </body>
 </html>

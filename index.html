@@ -1,624 +1,623 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Alexandru-Marius Hrițcu — Computer Science student, software engineer, digital CV.">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Alexandru-Marius Hrițcu — Computer Science student, software engineer, digital CV."
+    />
     <title>Alexandru-Marius Hrițcu — Digital CV</title>
-    <link rel="canonical" href="https://ahmarius.github.io/">
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <meta name="theme-color" content="#000000">
+    <link rel="canonical" href="https://ahmarius.github.io/" />
+    <link rel="icon" type="image/svg+xml" href="assets/site/favicon.svg" />
+    <meta name="theme-color" content="#000000" />
 
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="Alexandru-Marius Hrițcu — Digital CV">
-    <meta property="og:description" content="Computer Science student, software engineer, digital CV.">
-    <meta property="og:url" content="https://ahmarius.github.io/">
-    <meta property="og:image" content="https://ahmarius.github.io/ME.jpeg">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Alexandru-Marius Hrițcu — Digital CV">
-    <meta name="twitter:description" content="Computer Science student, software engineer, digital CV.">
-    <meta name="twitter:image" content="https://ahmarius.github.io/ME.jpeg">
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Alexandru-Marius Hrițcu — Digital CV" />
+    <meta
+      property="og:description"
+      content="Computer Science student, software engineer, digital CV."
+    />
+    <meta property="og:url" content="https://ahmarius.github.io/" />
+    <meta
+      property="og:image"
+      content="https://ahmarius.github.io/assets/media/ME.jpeg"
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Alexandru-Marius Hrițcu — Digital CV" />
+    <meta
+      name="twitter:description"
+      content="Computer Science student, software engineer, digital CV."
+    />
+    <meta
+      name="twitter:image"
+      content="https://ahmarius.github.io/assets/media/ME.jpeg"
+    />
 
-    <link rel="stylesheet" href="style.css">
-    <link rel="preload" href="ME.jpeg" as="image" fetchpriority="high">
-    <link rel="preload" href="video-poster.jpg" as="image">
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="2797aa09-f61a-4918-81c6-407ee5c2baaf"></script>
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <script defer src="assets/js/hero-fluid.js"></script>
+    <link
+      rel="preload"
+      href="assets/media/ME.jpeg"
+      as="image"
+      fetchpriority="high"
+    />
+    <script
+      defer
+      src="https://cloud.umami.is/script.js"
+      data-website-id="2797aa09-f61a-4918-81c6-407ee5c2baaf"
+    ></script>
 
     <script type="application/ld+json">
-{
-    "@context": "https://schema.org",
-    "@type": "Person",
-    "name": "Alexandru-Marius Hrițcu",
-    "url": "https://ahmarius.github.io/",
-    "image": "https://ahmarius.github.io/ME.jpeg",
-    "jobTitle": "Software Engineering Student",
-    "alumniOf": {
-        "@type": "CollegeOrUniversity",
-        "name": "Technical University of Iași"
-    },
-    "sameAs": [
-        "https://github.com/ahmarius",
-        "https://www.linkedin.com/in/alexandru-marius-hrițcu-018578421",
-        "https://alexmh05.itch.io",
-        "https://www.youtube.com/@ticklishseahorse",
-        "https://www.instagram.com/a_mariuuus"
-    ]
-}
+      {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": "Alexandru-Marius Hrițcu",
+        "url": "https://ahmarius.github.io/",
+        "image": "https://ahmarius.github.io/assets/media/ME.jpeg",
+        "jobTitle": "Software Engineering Student",
+        "alumniOf": {
+          "@type": "CollegeOrUniversity",
+          "name": "Technical University of Iași"
+        },
+        "sameAs": [
+          "https://github.com/ahmarius",
+          "https://www.linkedin.com/in/alexandru-marius-hrițcu-018578421",
+          "https://alexmh05.itch.io",
+          "https://www.youtube.com/@ticklishseahorse",
+          "https://www.instagram.com/a_mariuuus"
+        ]
+      }
     </script>
 
     <style>
-        /* ===== CV REQUEST MODAL ===== */
+      /* ===== CV REQUEST MODAL ===== */
 
-        .cv-modal-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 2000;
+      .cv-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
 
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
 
-            padding: 24px;
+        padding: 24px;
 
-            background: rgba(0, 0, 0, 0.58);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+        background: var(--color-overlay);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
 
-            opacity: 0;
-            visibility: hidden;
-            pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
 
-            transition:
-                opacity 0.25s ease,
-                visibility 0.25s ease;
-        }
+        transition:
+          opacity 0.25s ease,
+          visibility 0.25s ease;
+      }
 
-        .cv-modal-overlay.active {
-            opacity: 1;
-            visibility: visible;
-            pointer-events: auto;
-        }
+      .cv-modal-overlay.active {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+      }
 
+      .cv-modal {
+        width: 100%;
+        max-width: 480px;
+
+        padding: 34px;
+
+        background: var(--color-modal-bg);
+        border: 1px solid var(--color-card-border);
+        border-radius: 22px;
+
+        box-shadow: 0 25px 70px rgba(0, 0, 0, 0.45);
+
+        transform: translateY(15px) scale(0.97);
+        transition: transform 0.25s ease;
+      }
+
+      .cv-modal-overlay.active .cv-modal {
+        transform: translateY(0) scale(1);
+      }
+
+      .cv-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 20px;
+
+        margin-bottom: 18px;
+      }
+
+      .cv-modal h2 {
+        font-size: 1.55rem;
+        color: var(--color-accent);
+        margin: 0;
+      }
+
+      .cv-modal-close {
+        flex: 0 0 auto;
+
+        width: 34px;
+        height: 34px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        border: none;
+        border-radius: 50%;
+
+        background: var(--color-control-bg);
+        color: var(--color-text);
+
+        font-size: 1.3rem;
+        line-height: 1;
+
+        cursor: pointer;
+
+        transition:
+          background 0.2s ease,
+          transform 0.2s ease;
+      }
+
+      .cv-modal-close:hover {
+        background: var(--color-card-bg-hover);
+        transform: rotate(90deg);
+      }
+
+      .cv-modal-text {
+        color: var(--color-text);
+        font-size: 0.95rem;
+        line-height: 1.7;
+        margin-bottom: 24px;
+      }
+
+      .cv-modal-text strong {
+        color: var(--color-accent);
+      }
+
+      .cv-email-label {
+        display: block;
+        margin-bottom: 8px;
+
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+
+        color: var(--color-text);
+      }
+
+      .cv-email-input {
+        width: 100%;
+        padding: 13px 16px;
+
+        border: 1.5px solid var(--color-control-border);
+        border-radius: 12px;
+
+        background: var(--color-control-bg);
+        color: var(--color-text);
+
+        font-size: 0.95rem;
+
+        outline: none;
+
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease;
+      }
+
+      .cv-email-input:focus {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+      }
+
+      .cv-email-input::placeholder {
+        color: var(--color-placeholder);
+      }
+
+      .cv-modal-error {
+        min-height: 20px;
+
+        margin-top: 7px;
+
+        color: #9c3f2e;
+        font-size: 0.8rem;
+      }
+
+      .cv-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+
+        margin-top: 10px;
+      }
+
+      .cv-modal-btn {
+        padding: 11px 22px;
+
+        border-radius: 30px;
+
+        font-size: 0.85rem;
+        font-weight: 600;
+
+        cursor: pointer;
+
+        transition:
+          background 0.2s ease,
+          color 0.2s ease,
+          border-color 0.2s ease,
+          transform 0.2s ease;
+      }
+
+      .cv-modal-btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .cv-modal-cancel {
+        border: 1.5px solid var(--color-control-border);
+        background: transparent;
+        color: var(--color-text);
+      }
+
+      .cv-modal-cancel:hover {
+        border-color: var(--color-accent);
+      }
+
+      .cv-modal-submit {
+        border: 1.5px solid var(--color-accent);
+        background: var(--color-accent);
+        color: var(--color-primary);
+      }
+
+      .cv-modal-submit:hover {
+        background: transparent;
+        color: var(--color-accent);
+      }
+
+      @media (max-width: 600px) {
         .cv-modal {
-            width: 100%;
-            max-width: 480px;
-
-            padding: 34px;
-
-            background: rgba(235, 235, 235, 0.94);
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            border-radius: 22px;
-
-            box-shadow:
-                0 25px 70px rgba(0, 0, 0, 0.45);
-
-            transform: translateY(15px) scale(0.97);
-            transition: transform 0.25s ease;
-        }
-
-        .cv-modal-overlay.active .cv-modal {
-            transform: translateY(0) scale(1);
-        }
-
-        .cv-modal-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 20px;
-
-            margin-bottom: 18px;
-        }
-
-        .cv-modal h2 {
-            font-size: 1.55rem;
-            color: var(--color-accent);
-            margin: 0;
-        }
-
-        .cv-modal-close {
-            flex: 0 0 auto;
-
-            width: 34px;
-            height: 34px;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            border: none;
-            border-radius: 50%;
-
-            background: rgba(0, 0, 0, 0.08);
-            color: var(--color-text);
-
-            font-size: 1.3rem;
-            line-height: 1;
-
-            cursor: pointer;
-
-            transition:
-                background 0.2s ease,
-                transform 0.2s ease;
-        }
-
-        .cv-modal-close:hover {
-            background: rgba(0, 0, 0, 0.15);
-            transform: rotate(90deg);
-        }
-
-        .cv-modal-text {
-            color: var(--color-text);
-            font-size: 0.95rem;
-            line-height: 1.7;
-            margin-bottom: 24px;
-        }
-
-        .cv-modal-text strong {
-            color: var(--color-accent);
-        }
-
-        .cv-email-label {
-            display: block;
-            margin-bottom: 8px;
-
-            font-size: 0.78rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1.2px;
-
-            color: var(--color-text);
-        }
-
-        .cv-email-input {
-            width: 100%;
-            padding: 13px 16px;
-
-            border: 1.5px solid rgba(0, 0, 0, 0.18);
-            border-radius: 12px;
-
-            background: rgba(255, 255, 255, 0.72);
-            color: var(--color-text);
-
-            font-size: 0.95rem;
-
-            outline: none;
-
-            transition:
-                border-color 0.2s ease,
-                box-shadow 0.2s ease;
-        }
-
-        .cv-email-input:focus {
-            border-color: var(--color-accent);
-            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
-        }
-
-        .cv-email-input::placeholder {
-            color: rgba(47, 43, 44, 0.48);
-        }
-
-        .cv-modal-error {
-            min-height: 20px;
-
-            margin-top: 7px;
-
-            color: #9c3f2e;
-            font-size: 0.8rem;
+          padding: 26px 22px;
+          border-radius: 18px;
         }
 
         .cv-modal-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-
-            margin-top: 10px;
+          flex-direction: column-reverse;
         }
 
         .cv-modal-btn {
-            padding: 11px 22px;
-
-            border-radius: 30px;
-
-            font-size: 0.85rem;
-            font-weight: 600;
-
-            cursor: pointer;
-
-            transition:
-                background 0.2s ease,
-                color 0.2s ease,
-                border-color 0.2s ease,
-                transform 0.2s ease;
+          width: 100%;
         }
-
-        .cv-modal-btn:hover {
-            transform: translateY(-1px);
-        }
-
-        .cv-modal-cancel {
-            border: 1.5px solid rgba(0, 0, 0, 0.18);
-            background: transparent;
-            color: var(--color-text);
-        }
-
-        .cv-modal-cancel:hover {
-            border-color: var(--color-accent);
-        }
-
-        .cv-modal-submit {
-            border: 1.5px solid var(--color-accent);
-            background: var(--color-accent);
-            color: var(--color-primary);
-        }
-
-        .cv-modal-submit:hover {
-            background: transparent;
-            color: var(--color-accent);
-        }
-
-        @media (max-width: 600px) {
-            .cv-modal {
-                padding: 26px 22px;
-                border-radius: 18px;
-            }
-
-            .cv-modal-actions {
-                flex-direction: column-reverse;
-            }
-
-            .cv-modal-btn {
-                width: 100%;
-            }
-        }
+      }
     </style>
-</head>
+  </head>
 
-<body>
-
+  <body>
     <a class="skip-link" href="#main-content">Skip to main content</a>
 
-    <video
-        id="bgVideo"
-        autoplay
-        muted
-        loop
-        playsinline
-        disablepictureinpicture
-        poster="video-poster.jpg"
-        controlslist="nodownload noplaybackrate noremoteplayback">
-        <source src="video.mp4" type="video/mp4">
-    </video>
+    <canvas id="hero-fluid" aria-hidden="true"></canvas>
 
     <nav>
-        <div class="logo">DIGITAL CV</div>
+      <div class="logo">DIGITAL CV</div>
 
-        <ul class="nav-links" id="navLinks">
-            <li><a href="projects.html">Projects</a></li>
-            <li><a href="games.html">Games</a></li>
-            <li><a href="cv.pdf">CV</a></li>
-            <li><a href="about.html">About</a></li>
-        </ul>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="projects.html">Projects</a></li>
+        <li><a href="games.html">Games</a></li>
+        <li><a href="cv.pdf">CV</a></li>
+        <li><a href="about.html">About</a></li>
+      </ul>
 
-        <button
-            class="hamburger"
-            id="navToggle"
-            aria-label="Toggle menu"
-            aria-expanded="false"
-            aria-controls="navLinks">
-            <span></span>
-            <span></span>
-            <span></span>
-        </button>
+      <button
+        class="hamburger"
+        id="navToggle"
+        aria-label="Toggle menu"
+        aria-expanded="false"
+        aria-controls="navLinks"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
     </nav>
 
-    <main class="hero" id="main-content">
-
-        <div class="hero-layout">
-
-            <div class="hero-image">
-                <img
-                    src="ME.jpeg"
-                    alt="Portrait photo of Alexandru-Marius Hrițcu"
-                    class="hero-photo"
-                    fetchpriority="high">
-            </div>
-
-            <div class="hero-content">
-
-                <span class="hero-subtitle">
-                    Software Engineering Student
-                </span>
-
-                <h1>
-                    Hrițcu<br>
-                    Alexandru-Marius
-                </h1>
-
-                <p>
-                    Third-year Computer Science and Information Technology student at
-                    the Technical University of Iași, building software that spans
-                    computer graphics, simulation, optimization and high-performance
-                    computing.
-                </p>
-
-                <div class="hero-buttons">
-                    <button
-                        class="secondary-btn"
-                        type="button"
-                        onclick="location.href='games.html'">
-                        Play Games
-                    </button>
-
-
-
-                    <button
-                        class="primary-btn"
-                        onclick="location.href='projects.html'">
-                        Explore Projects
-                    </button>
-
-                    <button
-                        class="secondary-btn"
-                        onclick="location.href='about.html'">
-                        About Me
-                    </button>
-
-                    <button
-                        class="secondary-btn"
-                        id="downloadCvBtn"
-                        type="button">
-                        Download CV
-                    </button>
-
-                </div>
-
-            </div>
-
+    <main class="hero interactive-hero" id="main-content">
+      <div class="hero-layout">
+        <div class="hero-image">
+          <img
+            src="assets/media/ME.jpeg"
+            alt="Portrait photo of Alexandru-Marius Hrițcu"
+            class="hero-photo"
+            fetchpriority="high"
+          />
         </div>
 
-    </main>
+        <div class="hero-content">
+          <span class="hero-subtitle"> Software Engineering Student </span>
 
+          <h1>
+            Hrițcu<br />
+            Alexandru-Marius
+          </h1>
+
+          <p>
+            Third-year Computer Science and Information Technology student at
+            the Technical University of Iași, building software that spans
+            computer graphics, simulation, optimization and high-performance
+            computing.
+          </p>
+
+          <div class="hero-buttons">
+            <button
+              class="secondary-btn"
+              type="button"
+              onclick="location.href='games.html'"
+            >
+              Play Games
+            </button>
+
+            <button class="primary-btn" onclick="location.href='projects.html'">
+              Explore Projects
+            </button>
+
+            <button class="secondary-btn" onclick="location.href='about.html'">
+              About Me
+            </button>
+
+            <button class="secondary-btn" id="downloadCvBtn" type="button">
+              Download CV
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
 
     <!-- ===== CV REQUEST MODAL ===== -->
 
     <div
-        class="cv-modal-overlay"
-        id="cvModal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="cvModalTitle"
-        aria-hidden="true">
+      class="cv-modal-overlay"
+      id="cvModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cvModalTitle"
+      aria-hidden="true"
+    >
+      <div class="cv-modal">
+        <div class="cv-modal-header">
+          <h2 id="cvModalTitle">Request my CV</h2>
 
-        <div class="cv-modal">
-
-            <div class="cv-modal-header">
-
-                <h2 id="cvModalTitle">
-                    Request my CV
-                </h2>
-
-                <button
-                    class="cv-modal-close"
-                    id="cvModalClose"
-                    type="button"
-                    aria-label="Close">
-                    &times;
-                </button>
-
-            </div>
-
-            <p class="cv-modal-text">
-                To help me keep track of CV requests and avoid unintended
-                distribution, please provide your email address.
-                This will open a pre-filled email addressed to
-                <strong>hritcualex862@gmail.com</strong>
-                <button
-                    type="button"
-                    class="copy-email-btn"
-                    data-copy-email="hritcualex862@gmail.com"
-                    aria-label="Copy email address">
-                    Copy
-                </button>.
-            </p>
-
-            <form id="cvRequestForm">
-
-                <label
-                    class="cv-email-label"
-                    for="cvEmail">
-                    Your email address
-                </label>
-
-                <input
-                    class="cv-email-input"
-                    id="cvEmail"
-                    name="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    autocomplete="email"
-                    required>
-
-                <div
-                    class="cv-modal-error"
-                    id="cvModalError"
-                    role="alert"
-                    aria-live="polite">
-                </div>
-
-                <div class="cv-modal-actions">
-
-                    <button
-                        class="cv-modal-btn cv-modal-cancel"
-                        id="cvModalCancel"
-                        type="button">
-                        Cancel
-                    </button>
-
-                    <button
-                        class="cv-modal-btn cv-modal-submit"
-                        type="submit">
-                        Send CV Request
-                    </button>
-
-                </div>
-
-            </form>
-
+          <button
+            class="cv-modal-close"
+            id="cvModalClose"
+            type="button"
+            aria-label="Close"
+          >
+            &times;
+          </button>
         </div>
 
+        <p class="cv-modal-text">
+          To help me keep track of CV requests and avoid unintended
+          distribution, please provide your email address. This will open a
+          pre-filled email addressed to
+          <strong>hritcualex862@gmail.com</strong>
+          <button
+            type="button"
+            class="copy-email-btn"
+            data-copy-email="hritcualex862@gmail.com"
+            aria-label="Copy email address"
+          >
+            Copy</button
+          >.
+        </p>
+
+        <form id="cvRequestForm">
+          <label class="cv-email-label" for="cvEmail">
+            Your email address
+          </label>
+
+          <input
+            class="cv-email-input"
+            id="cvEmail"
+            name="email"
+            type="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+
+          <div
+            class="cv-modal-error"
+            id="cvModalError"
+            role="alert"
+            aria-live="polite"
+          ></div>
+
+          <div class="cv-modal-actions">
+            <button
+              class="cv-modal-btn cv-modal-cancel"
+              id="cvModalCancel"
+              type="button"
+            >
+              Cancel
+            </button>
+
+            <button class="cv-modal-btn cv-modal-submit" type="submit">
+              Send CV Request
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
 
-
     <script>
-        /* ===== REDUCED MOTION ===== */
+      /* ===== NAVIGATION ===== */
 
-        (function () {
-            const video = document.getElementById('bgVideo');
-            if (!video) return;
+      const navToggle = document.getElementById("navToggle");
+      const navLinks = document.getElementById("navLinks");
 
-            const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+      navToggle.addEventListener("click", () => {
+        const isOpen = navLinks.classList.toggle("active");
 
-            function applyPreference(matches) {
-                if (matches) {
-                    video.pause();
-                    video.removeAttribute('autoplay');
-                } else if (video.paused) {
-                    video.play().catch(() => {});
-                }
-            }
+        navToggle.classList.toggle("is-open", isOpen);
+        navToggle.setAttribute("aria-expanded", String(isOpen));
+      });
 
-            applyPreference(query.matches);
-            query.addEventListener('change', (e) => applyPreference(e.matches));
-        })();
-
-
-        /* ===== NAVIGATION ===== */
-
-        const navToggle = document.getElementById('navToggle');
-        const navLinks = document.getElementById('navLinks');
-
-        navToggle.addEventListener('click', () => {
-            const isOpen = navLinks.classList.toggle('active');
-
-            navToggle.classList.toggle('is-open', isOpen);
-            navToggle.setAttribute('aria-expanded', String(isOpen));
+      navLinks.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => {
+          navLinks.classList.remove("active");
+          navToggle.classList.remove("is-open");
+          navToggle.setAttribute("aria-expanded", "false");
         });
+      });
 
-        navLinks.querySelectorAll('a').forEach((link) => {
-            link.addEventListener('click', () => {
-                navLinks.classList.remove('active');
-                navToggle.classList.remove('is-open');
-                navToggle.setAttribute('aria-expanded', 'false');
-            });
-        });
+      /* ===== CV REQUEST MODAL ===== */
 
+      const downloadCvBtn = document.getElementById("downloadCvBtn");
+      const cvModal = document.getElementById("cvModal");
+      const cvModalClose = document.getElementById("cvModalClose");
+      const cvModalCancel = document.getElementById("cvModalCancel");
+      const cvRequestForm = document.getElementById("cvRequestForm");
+      const cvEmail = document.getElementById("cvEmail");
+      const cvModalError = document.getElementById("cvModalError");
 
-        /* ===== CV REQUEST MODAL ===== */
+      const cvRecipient = "hritcualex862@gmail.com";
 
-        const downloadCvBtn = document.getElementById('downloadCvBtn');
-        const cvModal = document.getElementById('cvModal');
-        const cvModalClose = document.getElementById('cvModalClose');
-        const cvModalCancel = document.getElementById('cvModalCancel');
-        const cvRequestForm = document.getElementById('cvRequestForm');
-        const cvEmail = document.getElementById('cvEmail');
-        const cvModalError = document.getElementById('cvModalError');
+      function openCvModal() {
+        cvModal.classList.add("active");
+        cvModal.setAttribute("aria-hidden", "false");
 
-        const cvRecipient = 'hritcualex862@gmail.com';
+        cvModalError.textContent = "";
 
+        setTimeout(() => {
+          cvEmail.focus();
+        }, 100);
+      }
 
-        function openCvModal() {
-            cvModal.classList.add('active');
-            cvModal.setAttribute('aria-hidden', 'false');
+      function closeCvModal() {
+        cvModal.classList.remove("active");
+        cvModal.setAttribute("aria-hidden", "true");
 
-            cvModalError.textContent = '';
+        cvModalError.textContent = "";
+      }
 
-            setTimeout(() => {
-                cvEmail.focus();
-            }, 100);
+      downloadCvBtn.addEventListener("click", openCvModal);
+
+      cvModalClose.addEventListener("click", closeCvModal);
+
+      cvModalCancel.addEventListener("click", closeCvModal);
+
+      /* Close when clicking outside the dialog */
+
+      cvModal.addEventListener("click", (event) => {
+        if (event.target === cvModal) {
+          closeCvModal();
+        }
+      });
+
+      /* Close with Escape */
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && cvModal.classList.contains("active")) {
+          closeCvModal();
+        }
+      });
+
+      /* Submit CV request */
+
+      cvRequestForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        const email = cvEmail.value.trim();
+
+        if (!email) {
+          cvModalError.textContent = "Please enter your email address.";
+          cvEmail.focus();
+          return;
         }
 
-
-        function closeCvModal() {
-            cvModal.classList.remove('active');
-            cvModal.setAttribute('aria-hidden', 'true');
-
-            cvModalError.textContent = '';
+        if (!cvEmail.checkValidity()) {
+          cvModalError.textContent = "Please enter a valid email address.";
+          cvEmail.focus();
+          return;
         }
 
+        const subject = encodeURIComponent("CV Request");
 
-        downloadCvBtn.addEventListener('click', openCvModal);
+        const body = encodeURIComponent(
+          `Hello Alexandru-Marius,\n\n` +
+            `I would like to request your CV.\n\n` +
+            `My email address is: ${email}\n\n` +
+            `Thank you.`,
+        );
 
-        cvModalClose.addEventListener('click', closeCvModal);
+        /*
+         * Open the user's default email client with a
+         * pre-filled request addressed to you.
+         */
+        window.location.href = `mailto:${cvRecipient}?subject=${subject}&body=${body}`;
 
-        cvModalCancel.addEventListener('click', closeCvModal);
+        closeCvModal();
+      });
 
+      /* ===== THEME AND INTERACTIVE HERO ===== */
 
-        /* Close when clicking outside the dialog */
+      const storedTheme = localStorage.getItem("theme");
+      const initialTheme = storedTheme === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = initialTheme;
 
-        cvModal.addEventListener('click', (event) => {
-            if (event.target === cvModal) {
-                closeCvModal();
-            }
+      const themeToggle = document.createElement("button");
+      themeToggle.type = "button";
+      themeToggle.className = "theme-toggle";
+      document.body.appendChild(themeToggle);
+
+      function updateThemeToggle(theme) {
+        const isDark = theme === "dark";
+        themeToggle.textContent = isDark ? "☀" : "☾";
+        themeToggle.title = isDark
+          ? "Switch to light theme"
+          : "Switch to dark theme";
+        themeToggle.setAttribute(
+          "aria-label",
+          isDark ? "Switch to light theme" : "Switch to dark theme",
+        );
+        themeToggle.setAttribute("aria-pressed", String(isDark));
+      }
+
+      updateThemeToggle(initialTheme);
+
+      themeToggle.addEventListener("click", () => {
+        const nextTheme =
+          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+
+        document.documentElement.dataset.theme = nextTheme;
+        localStorage.setItem("theme", nextTheme);
+        updateThemeToggle(nextTheme);
+      });
+
+      const interactiveHero = document.querySelector(".interactive-hero");
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      );
+
+      if (interactiveHero && !reducedMotion.matches) {
+        interactiveHero.addEventListener("pointermove", (event) => {
+          const bounds = interactiveHero.getBoundingClientRect();
+          const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+          const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+
+          interactiveHero.style.setProperty("--spotlight-x", `${x}%`);
+          interactiveHero.style.setProperty("--spotlight-y", `${y}%`);
         });
 
-
-        /* Close with Escape */
-
-        document.addEventListener('keydown', (event) => {
-            if (
-                event.key === 'Escape' &&
-                cvModal.classList.contains('active')
-            ) {
-                closeCvModal();
-            }
+        interactiveHero.addEventListener("pointerleave", () => {
+          interactiveHero.style.removeProperty("--spotlight-x");
+          interactiveHero.style.removeProperty("--spotlight-y");
         });
-
-
-        /* Submit CV request */
-
-        cvRequestForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-
-            const email = cvEmail.value.trim();
-
-            if (!email) {
-                cvModalError.textContent =
-                    'Please enter your email address.';
-                cvEmail.focus();
-                return;
-            }
-
-            if (!cvEmail.checkValidity()) {
-                cvModalError.textContent =
-                    'Please enter a valid email address.';
-                cvEmail.focus();
-                return;
-            }
-
-
-            const subject = encodeURIComponent(
-                'CV Request'
-            );
-
-            const body = encodeURIComponent(
-                `Hello Alexandru-Marius,\n\n` +
-                `I would like to request your CV.\n\n` +
-                `My email address is: ${email}\n\n` +
-                `Thank you.`
-            );
-
-
-            /*
-             * Open the user's default email client with a
-             * pre-filled request addressed to you.
-             */
-            window.location.href =
-                `mailto:${cvRecipient}?subject=${subject}&body=${body}`;
-
-
-            closeCvModal();
-        });
+      }
     </script>
-
-</body>
+  </body>
 </html>
