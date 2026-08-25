@@ -310,7 +310,7 @@ nav {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 28px;
+  border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.24);
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.32);
   transition:
