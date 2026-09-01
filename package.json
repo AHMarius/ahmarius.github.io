@@ -1,0 +1,11 @@
+{
+  "name": "ahmarius-portfolio",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node scripts/build-devlog.mjs",
+    "dev": "python3 -m http.server 4173",
+    "preview": "python3 -m http.server 4173",
+    "admin": "node admin/server.mjs"
+  }
+}

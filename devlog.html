@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Devlog — Alexandru-Marius Hrițcu</title>
+    <meta name="description" content="Project notes, technical decisions, and engineering experiments from Alexandru-Marius Hrițcu." />
+    <link rel="canonical" href="https://ahmarius.github.io/devlog.html" />
+    <link rel="icon" type="image/svg+xml" href="assets/site/favicon.svg" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <link rel="stylesheet" href="assets/css/devlog.css" />
+    <script defer src="assets/js/hero-fluid.js"></script>
+    <script defer src="assets/js/script.js"></script>
+    <script defer src="assets/js/devlog.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <canvas id="hero-fluid" aria-hidden="true"></canvas>
+    <nav class="topnav">
+      <div class="topnav-inner">
+        <span class="site-logo">DIGITAL CV</span>
+        <button id="hamburger-btn" class="hamburger-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobile-menu">
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+          <span class="hamburger-bar"></span>
+        </button>
+      </div>
+      <ul id="mobile-menu" class="mobile-menu" hidden>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="projects.html">Projects</a></li>
+        <li><a href="games.html">Games</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="about.html#contact">Contact</a></li>
+        <li><a aria-current="page" href="devlog.html">Devlog</a></li>
+      </ul>
+    </nav>
+    <header class="page-header devlog-header">
+      <p class="section-eyebrow">Project notes</p>
+      <h1>Devlog</h1>
+      <p class="section-intro">A lightweight journal of the technical choices, experiments, and learning moments behind the work on this site.</p>
+    </header>
+    <main id="main-content" class="devlog-shell">
+      <section class="devlog-toolbar" aria-label="Devlog filters">
+        <div class="devlog-filter">
+          <label for="devlog-search">Search</label>
+          <input id="devlog-search" type="search" placeholder="Search posts..." />
+        </div>
+        <div class="devlog-filter">
+          <label for="devlog-tag">Tag</label>
+          <select id="devlog-tag">
+            <option value="all">All tags</option>
+            <option value="Architecture">Architecture</option><option value="Engineering">Engineering</option><option value="Game Design">Game Design</option><option value="Game Loop">Game Loop</option><option value="Optimization">Optimization</option><option value="Physics">Physics</option><option value="Simulation">Simulation</option><option value="Systems">Systems</option><option value="Visualisation">Visualisation</option>
+          </select>
+        </div>
+        <div class="devlog-filter">
+          <label for="devlog-tech">Technology</label>
+          <select id="devlog-tech">
+            <option value="all">All technologies</option>
+            <option value="C++">C++</option><option value="Graphics">Graphics</option><option value="Java">Java</option><option value="Optimization">Optimization</option><option value="Rust">Rust</option><option value="Systems">Systems</option><option value="Teamwork">Teamwork</option>
+          </select>
+        </div>
+        <div class="devlog-filter">
+          <label for="devlog-project">Project</label>
+          <select id="devlog-project">
+            <option value="all">All projects</option>
+            <option value="FluidDynamics">FluidDynamics</option><option value="IronHalo">IronHalo</option><option value="JustDrive">JustDrive</option>
+          </select>
+        </div>
+        <div class="devlog-filter">
+          <label for="devlog-status">Status</label>
+          <select id="devlog-status">
+            <option value="all">All</option>
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+          </select>
+        </div>
+      </section>
+      <div class="devlog-grid">
+    <article class="devlog-card" data-search="What JustDrive taught me about iteration What JustDrive taught me about iteration The project behind JustDrive was a reminder that a good prototype can teach a lot faster than a polished plan ever will. The first value of Optimization Game Loop Systems C++ Rust Graphics" data-tags="Optimization Game Loop Systems" data-technologies="C++ Rust Graphics" data-project="JustDrive" data-status="published">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">What JustDrive taught me about iteration</h3>
+        <span class="devlog-meta">2026-08-25</span>
+      </div>
+      <p>What JustDrive taught me about iteration The project behind JustDrive was a reminder that a good prototype can teach a lot faster than a polished plan ever will. The first value of</p>
+      <div class="devlog-tags"><span class="devlog-tag">Optimization</span><span class="devlog-tag">Game Loop</span><span class="devlog-tag">Systems</span></div>
+      <div class="devlog-tech"><span class="devlog-tech-item">C++</span><span class="devlog-tech-item">Rust</span><span class="devlog-tech-item">Graphics</span></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">1 min read</span>
+        <span class="devlog-meta">JustDrive</span>
+        <a class="devlog-link" href="devlog/justdrive-optimization.html">Read article</a>
+      </div>
+    </article>
+  
+
+    <article class="devlog-card" data-search="IronHalo and the cost of growing an idea IronHalo and the cost of growing an idea The largest learning moment from IronHalo was not technical complexity. It was scale. A team made project can become an excellent forcing f Architecture Game Design Engineering Java Systems Teamwork" data-tags="Architecture Game Design Engineering" data-technologies="Java Systems Teamwork" data-project="IronHalo" data-status="published">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">IronHalo and the cost of growing an idea</h3>
+        <span class="devlog-meta">2026-08-18</span>
+      </div>
+      <p>IronHalo and the cost of growing an idea The largest learning moment from IronHalo was not technical complexity. It was scale. A team made project can become an excellent forcing f</p>
+      <div class="devlog-tags"><span class="devlog-tag">Architecture</span><span class="devlog-tag">Game Design</span><span class="devlog-tag">Engineering</span></div>
+      <div class="devlog-tech"><span class="devlog-tech-item">Java</span><span class="devlog-tech-item">Systems</span><span class="devlog-tech-item">Teamwork</span></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">1 min read</span>
+        <span class="devlog-meta">IronHalo</span>
+        <a class="devlog-link" href="devlog/ironhalo-teamlessons.html">Read article</a>
+      </div>
+    </article>
+  
+
+    <article class="devlog-card" data-search="Fluid dynamics notes from the motion study project Fluid dynamics notes from the motion study project The interesting part of this project was not the number of particles or the visual noise. It was making motion readable. The Flui Simulation Physics Visualisation C++ Graphics Optimization" data-tags="Simulation Physics Visualisation" data-technologies="C++ Graphics Optimization" data-project="FluidDynamics" data-status="published">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">Fluid dynamics notes from the motion study project</h3>
+        <span class="devlog-meta">2026-08-11</span>
+      </div>
+      <p>Fluid dynamics notes from the motion study project The interesting part of this project was not the number of particles or the visual noise. It was making motion readable. The Flui</p>
+      <div class="devlog-tags"><span class="devlog-tag">Simulation</span><span class="devlog-tag">Physics</span><span class="devlog-tag">Visualisation</span></div>
+      <div class="devlog-tech"><span class="devlog-tech-item">C++</span><span class="devlog-tech-item">Graphics</span><span class="devlog-tech-item">Optimization</span></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">2 min read</span>
+        <span class="devlog-meta">FluidDynamics</span>
+        <a class="devlog-link" href="devlog/fluid-dynamics-notes.html">Read article</a>
+      </div>
+    </article>
+  </div>
+      <div id="devlog-empty" class="devlog-empty">No posts match the current filters.</div>
+    </main>
+  </body>
+</html>

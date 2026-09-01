@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Devlog Admin</title>
+    <style>
+      :root {
+        --bg: #111318;
+        --panel: rgba(29, 32, 41, 0.9);
+        --panel-border: rgba(255,255,255,0.14);
+        --text: #eef0f4;
+        --muted: rgba(238,240,244,0.7);
+        --accent: #b9d9ff;
+        --danger: #ffb4a9;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, 'Segoe UI', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 3rem;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 20px;
+        padding: 1rem;
+      }
+      .editor-layout {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: 1rem;
+      }
+      form {
+        display: grid;
+        gap: 0.75rem;
+      }
+      label {
+        display: grid;
+        gap: 0.35rem;
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      input, textarea, select, button {
+        font: inherit;
+      }
+      input, textarea, select {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--panel-border);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        padding: 0.7rem 0.8rem;
+      }
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      button {
+        cursor: pointer;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        padding: 0.7rem 1rem;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #111318;
+        border-color: transparent;
+      }
+      button.danger {
+        background: rgba(255,180,169,0.14);
+        color: var(--danger);
+        border-color: rgba(255,180,169,0.4);
+      }
+      .preview {
+        min-height: 300px;
+        line-height: 1.8;
+      }
+      .preview h1, .preview h2, .preview h3 {
+        margin-top: 1rem;
+      }
+      .post-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.6rem;
+      }
+      .post-list button {
+        width: 100%;
+        text-align: left;
+      }
+      @media (max-width: 960px) {
+        .editor-layout { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <div>
+          <h1>Local Devlog Admin</h1>
+          <p style="margin:0; color:var(--muted);">Write real repository content and rebuild the public site locally.</p>
+        </div>
+        <button id="buildButton" class="primary" type="button">Build static site</button>
+      </div>
+
+      <div class="editor-layout">
+        <section class="panel">
+          <form id="postForm">
+            <label>
+              Title
+              <input id="title" name="title" required />
+            </label>
+            <label>
+              Slug
+              <input id="slug" name="slug" required />
+            </label>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:0.75rem;">
+              <label>
+                Date
+                <input id="date" name="date" type="date" required />
+              </label>
+              <label>
+                Status
+                <select id="status" name="status">
+                  <option value="published">Published</option>
+                  <option value="draft">Draft</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Project
+              <input id="project" name="project" placeholder="FluidDynamics" />
+            </label>
+            <label>
+              Tags
+              <input id="tags" name="tags" placeholder="Simulation, Physics" />
+            </label>
+            <label>
+              Technologies
+              <input id="technologies" name="technologies" placeholder="C++, Graphics, Optimization" />
+            </label>
+            <label>
+              Excerpt
+              <textarea id="excerpt" name="excerpt" placeholder="Short summary for the list page."></textarea>
+            </label>
+            <label>
+              Markdown body
+              <textarea id="body" name="body" placeholder="# Heading\n\nParagraph text..." required></textarea>
+            </label>
+            <div class="button-row">
+              <button class="primary" type="submit">Save post</button>
+              <button id="newButton" type="button">New post</button>
+              <button id="deleteButton" class="danger" type="button">Delete</button>
+            </div>
+          </form>
+        </section>
+
+        <aside class="panel">
+          <h2>Live preview</h2>
+          <div id="preview" class="preview"></div>
+        </aside>
+      </div>
+
+      <section class="panel" style="margin-top: 1rem;">
+        <h2>Published content</h2>
+        <ul id="postList" class="post-list"></ul>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById('postForm');
+      const preview = document.getElementById('preview');
+      const postList = document.getElementById('postList');
+      const buildButton = document.getElementById('buildButton');
+      const deleteButton = document.getElementById('deleteButton');
+      const newButton = document.getElementById('newButton');
+      const apiBase = 'http://127.0.0.1:4175';
+
+      function escapeHtml(value = '') {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function renderMarkdown(text = '') {
+        let html = escapeHtml(text);
+        html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>');
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        html = html.replace(/\n\n/g, '</p><p>');
+        html = html.replace(/\n/g, '<br>');
+        return `<p>${html}</p>`;
+      }
+
+      function updatePreview() {
+        const text = document.getElementById('body').value || '';
+        preview.innerHTML = renderMarkdown(text);
+      }
+
+      function getFormData() {
+        const title = document.getElementById('title').value.trim();
+        const slug = document.getElementById('slug').value.trim();
+        const date = document.getElementById('date').value;
+        const status = document.getElementById('status').value;
+        const project = document.getElementById('project').value.trim();
+        const tags = document.getElementById('tags').value.split(',').map((item) => item.trim()).filter(Boolean);
+        const technologies = document.getElementById('technologies').value.split(',').map((item) => item.trim()).filter(Boolean);
+        const excerpt = document.getElementById('excerpt').value.trim();
+        const body = document.getElementById('body').value.trim();
+        return { title, slug, date, status, project, tags, technologies, excerpt, body };
+      }
+
+      async function fetchPosts() {
+        const response = await fetch(`${apiBase}/api/posts`);
+        const posts = await response.json();
+        postList.innerHTML = posts.map((post) => `
+          <li>
+            <button type="button" data-slug="${post.slug}">${post.title}</button>
+          </li>
+        `).join('');
+
+        postList.querySelectorAll('button[data-slug]').forEach((button) => {
+          button.addEventListener('click', () => loadPost(button.dataset.slug));
+        });
+      }
+
+      async function loadPost(slug) {
+        const response = await fetch(`${apiBase}/api/posts/${slug}`);
+        const post = await response.json();
+        if (!post) return;
+        document.getElementById('title').value = post.title || '';
+        document.getElementById('slug').value = post.slug || '';
+        document.getElementById('date').value = post.date || '';
+        document.getElementById('status').value = post.status || 'published';
+        document.getElementById('project').value = post.project || '';
+        document.getElementById('tags').value = (post.tags || []).join(', ');
+        document.getElementById('technologies').value = (post.technologies || []).join(', ');
+        document.getElementById('excerpt').value = post.excerpt || '';
+        document.getElementById('body').value = post.body || '';
+        updatePreview();
+      }
+
+      function resetForm() {
+        form.reset();
+        document.getElementById('status').value = 'published';
+        updatePreview();
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const payload = getFormData();
+        if (!payload.title || !payload.slug || !payload.date || !payload.body) {
+          alert('Title, slug, date and body are required.');
+          return;
+        }
+
+        const response = await fetch(`${apiBase}/api/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          alert(result.error || 'Unable to save post.');
+          return;
+        }
+
+        alert(result.message || 'Saved.');
+        fetchPosts();
+      });
+
+      deleteButton.addEventListener('click', async () => {
+        const slug = document.getElementById('slug').value.trim();
+        if (!slug) {
+          alert('Choose a post first.');
+          return;
+        }
+
+        const confirmed = confirm(`Delete the post: ${slug}?`);
+        if (!confirmed) return;
+
+        const response = await fetch(`${apiBase}/api/posts/${slug}`, { method: 'DELETE' });
+        const result = await response.json();
+        if (!response.ok) {
+          alert(result.error || 'Unable to delete post.');
+          return;
+        }
+
+        alert(result.message || 'Deleted.');
+        resetForm();
+        fetchPosts();
+      });
+
+      buildButton.addEventListener('click', async () => {
+        const response = await fetch(`${apiBase}/api/build`, { method: 'POST' });
+        const result = await response.json();
+        if (!response.ok) {
+          alert(result.error || 'Build failed.');
+          return;
+        }
+        alert(result.message || 'Build succeeded.');
+      });
+
+      newButton.addEventListener('click', () => resetForm());
+      document.getElementById('body').addEventListener('input', updatePreview);
+      document.getElementById('excerpt').addEventListener('input', updatePreview);
+
+      fetchPosts();
+      resetForm();
+    </script>
+  </body>
+</html>

@@ -3,33 +3,33 @@
    ====================================================================== */
 
 :root {
-  --color-bg-body: #d3d3ca;
-  --color-bg-navbar: rgba(195, 197, 193, 0.88);
+  --color-bg-body: #ece7df;
+  --color-bg-navbar: rgba(220, 220, 214, 0.9);
   --color-bg-api: rgba(255, 255, 255, 0.72);
 
-  --color-primary: #2f2b2c;
-  --color-accent: #000000;
+  --color-primary: #232326;
+  --color-accent: #0f1013;
 
-  --color-secondary: #ecece8;
-  --color-text: #2f2b2c;
-  --color-text-light: #4a4647;
+  --color-secondary: #f0efe8;
+  --color-text: #1f2125;
+  --color-text-light: #4f555c;
 
-  --color-link: #5b4348;
-  --color-link-hover: #8d5e66;
+  --color-link: #5c3a44;
+  --color-link-hover: #7d4553;
 
-  --color-box-border: rgba(40, 40, 40, 0.12);
-  --color-box-shadow: rgba(0, 0, 0, 0.22);
+  --color-box-border: rgba(31, 33, 37, 0.18);
+  --color-box-shadow: rgba(0, 0, 0, 0.18);
 
-  --color-card-bg: rgba(235, 235, 235, 0.68);
-  --color-card-bg-hover: rgba(235, 235, 235, 0.84);
-  --color-card-border: rgba(255, 255, 255, 0.68);
+  --color-card-bg: rgba(250, 249, 246, 0.84);
+  --color-card-bg-hover: rgba(255, 255, 255, 0.92);
+  --color-card-border: rgba(31, 33, 37, 0.16);
   --color-overlay: rgba(0, 0, 0, 0.58);
-  --color-modal-bg: rgba(235, 235, 235, 0.94);
-  --color-control-bg: rgba(255, 255, 255, 0.55);
-  --color-control-border: rgba(0, 0, 0, 0.16);
-  --color-placeholder: rgba(47, 43, 44, 0.5);
-  --color-button-secondary-bg: rgba(195, 197, 193, 0.75);
-  --color-button-secondary-border: rgba(47, 43, 44, 0.28);
+  --color-modal-bg: rgba(245, 241, 236, 0.96);
+  --color-control-bg: rgba(255, 255, 255, 0.78);
+  --color-control-border: rgba(31, 33, 37, 0.2);
+  --color-placeholder: rgba(31, 33, 37, 0.56);
+  --color-button-secondary-bg: rgba(255, 255, 255, 0.78);
+  --color-button-secondary-border: rgba(31, 33, 37, 0.24);
 
   --status-finished: #b7f5a9;
   --status-finished-bg: rgba(43, 116, 52, 0.68);
@@ -61,33 +61,33 @@
 }
 
 :root[data-theme="dark"] {
-  --color-bg-body: #111318;
-  --color-bg-navbar: rgba(25, 27, 34, 0.9);
-  --color-bg-api: rgba(28, 31, 39, 0.82);
+  --color-bg-body: #0d1117;
+  --color-bg-navbar: rgba(18, 22, 29, 0.9);
+  --color-bg-api: rgba(22, 27, 35, 0.82);
 
   --color-primary: #f4f5f7;
   --color-accent: #ffffff;
 
-  --color-secondary: #20232c;
-  --color-text: #eef0f4;
-  --color-text-light: #ffffff;
+  --color-secondary: #1d2430;
+  --color-text: #edf1f6;
+  --color-text-light: #dfe7f3;
 
-  --color-link: #e1b8c0;
-  --color-link-hover: #ffd2da;
+  --color-link: #efc5d1;
+  --color-link-hover: #ffdce5;
 
   --color-box-border: rgba(255, 255, 255, 0.14);
   --color-box-shadow: rgba(0, 0, 0, 0.42);
 
-  --color-card-bg: rgba(29, 32, 41, 0.78);
-  --color-card-bg-hover: rgba(35, 39, 49, 0.9);
-  --color-card-border: rgba(255, 255, 255, 0.16);
+  --color-card-bg: rgba(23, 29, 37, 0.86);
+  --color-card-bg-hover: rgba(32, 39, 47, 0.94);
+  --color-card-border: rgba(255, 255, 255, 0.14);
   --color-overlay: rgba(0, 0, 0, 0.78);
-  --color-modal-bg: rgba(27, 30, 38, 0.98);
-  --color-control-bg: rgba(255, 255, 255, 0.08);
-  --color-control-border: rgba(255, 255, 255, 0.22);
-  --color-placeholder: rgba(238, 240, 244, 0.58);
-  --color-button-secondary-bg: rgba(24, 27, 35, 0.88);
-  --color-button-secondary-border: rgba(255, 255, 255, 0.28);
+  --color-modal-bg: rgba(18, 23, 30, 0.98);
+  --color-control-bg: rgba(255, 255, 255, 0.06);
+  --color-control-border: rgba(255, 255, 255, 0.2);
+  --color-placeholder: rgba(238, 240, 244, 0.6);
+  --color-button-secondary-bg: rgba(35, 42, 52, 0.88);
+  --color-button-secondary-border: rgba(255, 255, 255, 0.18);
 }
 
 * {
@@ -2621,7 +2621,7 @@ footer {
 
 .game-play-button {
   background: var(--color-accent);
-  color: var(--color-primary);
+  color: var(--color-bg-body);
 }
 
 .game-play-button:hover {
