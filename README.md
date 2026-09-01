@@ -1,18 +1,45 @@
-# ahmarius.github.io — games-enabled build
+# ahmarius.github.io
 
-Built from the latest supplied site files.
+This repository keeps the public portfolio as a static GitHub Pages site and adds a separate Devlog system without breaking the original portfolio.
 
-Added:
+## Portfolio architecture
 
-- `games.html`: dedicated playable-games hub
-- `game-player.html`: generic branded player route
-- browser-build architecture for Unity/WebGL, C++/WebAssembly, and Java-in-browser
-- Games navigation and Home/About CTAs
-- `games/README.md` with build/deployment structure
-- `.nojekyll` for static game-build publishing
-- Games page in the sitemap
+- `index.html` remains the public landing page for the original portfolio.
+- The existing project, games, about, and contact content stays in the original static pages and assets.
+- No React or SPA migration is required for the public site.
 
-Important:
-No game binaries were fabricated or altered. Existing browser releases are linked
-to their published itch.io pages. A real self-hosted game build is loaded
-automatically when `games/<slug>/index.html` exists.
+## Devlog architecture
+
+- Public Devlog entry point: `devlog.html`
+- Structured markdown content lives under `content/devlog/`
+- Generated static pages are written under `devlog/`
+- Styling is shared with the existing portfolio and extended through `assets/css/devlog.css`
+
+## Admin architecture
+
+- Local-only admin UI: `admin/index.html`
+- Local Node backend: `admin/server.mjs`
+- The admin writes real repository markdown files and runs `node scripts/build-devlog.mjs`
+- The admin binds to `127.0.0.1` and is not exposed publicly
+
+## Build process
+
+- `npm run build` generates the static site and devlog pages into `dist/`
+- `npm run dev` starts a local static preview on port 4173
+- `npm run preview` serves the same static build locally
+- `npm run admin` launches the localhost-only content management interface
+
+## GitHub Pages deployment
+
+- The existing Pages workflow remains the deployment mechanism.
+- The public site continues to work as static files with no production backend.
+
+## Safe publishing
+
+- The admin determines the specific files to change and only stages relevant Devlog content.
+- It does not use destructive Git commands such as `git reset --hard` or `git clean -fd`.
+- Auth is resolved via the existing GitHub CLI/SSH setup, not through hardcoded tokens.
+
+## Content notes
+
+The initial Devlog posts are based on real project material already present in this repository, such as `FluidDynamics`, `IronHalo`, and the browser-game work in `games/`.
