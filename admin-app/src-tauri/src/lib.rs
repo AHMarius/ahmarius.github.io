@@ -175,14 +175,65 @@ fn save_prefs(prefs: &Preferences, path: &Path) {
 
 // ---------- Repo resolution ----------
 
+/// Find the ahmarius.github.io repository root automatically when the user has
+/// not configured an explicit path. Checks, in order:
+///   1. An explicit path (settings or per-command fallback).
+///   2. The current working directory if it is inside the site repo.
+///   3. The parent/ancestors of the current working directory.
+///   4. Common development locations under the user's home.
+fn auto_detect_repo() -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.clone());
+        for anc in cwd.ancestors().skip(1) {
+            candidates.push(anc.to_path_buf());
+        }
+    }
+    let home = std::env::home_dir()?;
+    let mut known: Vec<PathBuf> = vec![
+        home.join("ahmarius.github.io"),
+        home.join("WebstormProjects").join("ahmarius.github.io"),
+        home.join("projects").join("ahmarius.github.io"),
+        home.join("Developer").join("ahmarius.github.io"),
+        home.join("dev").join("ahmarius.github.io"),
+    ];
+    if let Ok(existing) = std::fs::read_dir(home.join("WebstormProjects")) {
+        for entry in existing.flatten() {
+            let p = entry.path();
+            if p.is_dir() && p.file_name().map(|n| n == "ahmarius.github.io").unwrap_or(false) {
+                known.push(p);
+            }
+        }
+    }
+    candidates.extend(known);
+
+    for cand in candidates {
+        if git::repo_valid(&cand) {
+            return Some(cand);
+        }
+    }
+    None
+}
+
 fn repo_for(state: &AppState, fallback: Option<String>) -> Result<PathBuf, AppError> {
     let p = state.prefs.lock().unwrap();
-    let explicit = fallback.or(p.repo_path.clone());
-    explicit
-        .map(PathBuf::from)
-        .ok_or_else(|| {
-            AppError::Validation("No repository path configured. Set it in Settings first.".into())
-        })
+    let explicit = fallback
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| p.repo_path.clone().filter(|s| !s.trim().is_empty()));
+    if let Some(path) = explicit {
+        let pb = PathBuf::from(path);
+        if pb.join(".git").exists() || git::repo_valid(&pb) {
+            return Ok(pb);
+        }
+        return Err(AppError::Validation(
+            "The configured path is not a Git repository. Check Settings.".into(),
+        ));
+    }
+    auto_detect_repo().ok_or_else(|| {
+        AppError::Validation(
+            "Could not locate the ahmarius.github.io repository automatically. Open Settings and set the repository path.".into(),
+        )
+    })
 }
 
 fn with_repo<T>(
@@ -382,6 +433,16 @@ fn import_pdf(app: tauri::AppHandle, source_path: String) -> Result<import::PdfI
 }
 
 #[tauri::command]
+fn scan_media(app: tauri::AppHandle) -> Result<Vec<content::MediaFile>, AppError> {
+    with_repo(&app, None, |repo| content::scan_media(repo))
+}
+
+#[tauri::command]
+fn delete_media(app: tauri::AppHandle, rel_path: String) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| content::delete_media(repo, &rel_path))
+}
+
+#[tauri::command]
 fn build_site(app: tauri::AppHandle) -> Result<build::BuildResult, AppError> {
     with_repo(&app, None, |repo| build::build_site(repo))
 }
@@ -414,6 +475,11 @@ fn git_push(app: tauri::AppHandle, branch: String) -> Result<String, AppError> {
 #[tauri::command]
 fn git_last_commit(app: tauri::AppHandle) -> Result<String, AppError> {
     with_repo(&app, None, |repo| git::git_last_commit(repo))
+}
+
+#[tauri::command]
+fn git_auth_status(app: tauri::AppHandle) -> Result<serde_json::Value, AppError> {
+    with_repo(&app, None, |repo| git::git_auth_status(repo))
 }
 
 #[tauri::command]
@@ -533,6 +599,8 @@ pub fn run() {
             delete_post,
             import_asset,
             import_pdf,
+            scan_media,
+            delete_media,
             build_site,
             git_status,
             git_diff_summary,
@@ -540,6 +608,7 @@ pub fn run() {
             git_commit,
             git_push,
             git_last_commit,
+            git_auth_status,
             check_repo,
         ])
         .run(tauri::generate_context!())

@@ -515,9 +515,25 @@ function openPublish() {
   $("#pub-cancel", overlay)!.onclick = () => overlay.remove();
 
   cell(async () => {
-    const st = await call("git_status");
+    let st;
+    try {
+      st = await call("git_status");
+    } catch (e) {
+      body.innerHTML = `<p class="error-text">Could not read Git status: ${esc(String((e as any).message || e))}</p>
+        <p class="muted">Open Settings to set or verify the repository path.</p>`;
+      return;
+    }
     if (!st) {
-      body.innerHTML = `<p class="error-text">Could not read Git status. Is the configured folder a repository?</p>`;
+      body.innerHTML = `<p class="error-text">Could not read Git status. Open Settings to set the repository path.</p>`;
+      return;
+    }
+    const auth = await cell(() => call("git_auth_status"));
+    if (auth && !auth.authenticated) {
+      body.innerHTML = `<p class="error-text">Not signed in to GitHub.</p>
+        <p class="muted">${auth.gh_installed ? "Run <code>gh auth login</code> in a terminal, then try again." : "GitHub CLI (<code>gh</code>) not installed — configure Git credentials for the remote."}</p>
+        ${auth.error ? `<pre class="diffbox">${esc(String(auth.error).slice(0, 200))}</pre>` : ""}
+        <div class="modal-actions"><button id="pub-cancel2" class="btn">Close</button></div>`;
+      $("#pub-cancel2", overlay)!.onclick = () => overlay.remove();
       return;
     }
     const staged = st.staged.map((f: any) => `${f.path}`).join("<br>");
@@ -592,6 +608,14 @@ function showSettings() {
   v.appendChild(el("h1", "page-title", "Settings"));
   const form = el("div", "prop-form");
   form.innerHTML = `
+    <div class="auth-panel">
+      <h3>GitHub sign-in</h3>
+      <p class="auth-desc">Used to publish changes to <strong>ahmarius.github.io</strong>.
+        The app uses the GitHub CLI (<code>gh</code>) that is already on your system to sign in automatically.</p>
+      <div id="auth-status" class="auth-status loading">Checking GitHub connection…</div>
+      <button id="auth-refresh" class="btn">Check again</button>
+      <p class="muted auth-hint">If it says not signed in, run <code>gh auth login</code> in a terminal.</p>
+    </div>
     <label>Repository path <input id="set-repo" value="${esc(state.prefs?.repo_path || "")}" placeholder="/path/to/ahmarius.github.io" /></label>
     <label>Theme
       <select id="set-theme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select>
@@ -605,6 +629,8 @@ function showSettings() {
   v.appendChild(form);
   ($("#set-theme") as HTMLSelectElement).value = state.prefs?.theme || "system";
   ($("#set-status") as HTMLSelectElement).value = state.prefs?.default_status || "draft";
+  renderAuthStatus();
+  $("#auth-refresh")!.onclick = renderAuthStatus;
   $("#set-save")!.onclick = async () => {
     const repo = ($("#set-repo") as HTMLInputElement).value.trim();
     if (repo) {
@@ -625,6 +651,29 @@ function showSettings() {
     ($("#set-msg") as HTMLElement).textContent = "Saved.";
     await refreshTree();
   };
+}
+
+async function renderAuthStatus() {
+  const host = $("#auth-status");
+  if (!host) return;
+  host.className = "auth-status loading";
+  host.textContent = "Checking GitHub connection…";
+  await cell(async () => {
+    const st = await call("git_auth_status");
+    if (!st) {
+      host.className = "auth-status error";
+      host.innerHTML = "Could not check GitHub (no repository configured?).";
+      return;
+    }
+    if (st.authenticated) {
+      host.className = "auth-status ok";
+      host.innerHTML = `Connected to GitHub as <strong>${esc(st.remote || "origin")}</strong> — ready to publish.`;
+    } else {
+      host.className = "auth-status error";
+      host.innerHTML = `Not signed in to GitHub. ${st.gh_installed ? "Run <code>gh auth login</code> in a terminal." : "GitHub CLI (<code>gh</code>) not found — install it or configure Git credentials."}` +
+        (st.error ? ` <span class="muted">(${esc(String(st.error).slice(0, 80))})</span>` : "");
+    }
+  });
 }
 
 // ---------- Wiring ----------

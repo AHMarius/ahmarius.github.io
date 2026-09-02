@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "node scripts/build-devlog.mjs",
+    "build": "node scripts/build-site.mjs",
     "dev": "python3 -m http.server 4173",
     "preview": "python3 -m http.server 4173",
     "admin": "node admin/server.mjs"

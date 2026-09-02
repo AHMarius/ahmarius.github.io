@@ -283,11 +283,18 @@ pub fn page_dir_of(repo: &Path, slug: &str) -> AppResult<PathBuf> {
 pub fn list_pages(repo: &Path) -> AppResult<Vec<PageRow>> {
     let pages_root = resolve_in_repo(repo, "content/pages")?;
     let mut out = vec![];
-    collect_pages(repo, &pages_root, &mut out)?;
+    if let Ok(entries) = std::fs::read_dir(&pages_root) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_page(repo, &p, &mut out)?;
+            }
+        }
+    }
     Ok(out)
 }
 
-fn collect_pages(repo: &Path, dir: &Path, out: &mut Vec<PageRow>) -> AppResult<()> {
+fn collect_page(repo: &Path, dir: &Path, out: &mut Vec<PageRow>) -> AppResult<()> {
     let page_file = dir.join(PAGE_FILE);
     if page_file.exists() {
         let slug = dir
@@ -321,7 +328,7 @@ fn collect_pages(repo: &Path, dir: &Path, out: &mut Vec<PageRow>) -> AppResult<(
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.is_dir() {
-                    collect_pages(repo, &p, out)?;
+                    collect_page(repo, &p, out)?;
                 }
             }
         }
@@ -574,6 +581,7 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
     };
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
+        ensure_page_meta(parent)?;
     }
     atomic_write(&file, &serialize_post(&meta, &input.body))?;
     Ok(post_slug)
@@ -588,6 +596,36 @@ pub fn delete_post(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<(
     if assets.exists() {
         std::fs::remove_dir_all(&assets)?;
     }
+    Ok(())
+}
+
+/// Ensure a page's `page.yml` exists for a post's parent `posts` directory.
+///
+/// When a post is written into a slug that has never been created as a page
+/// through the "New Page" flow, this auto-provisions a minimal page so the
+/// page (and its posts) are visible both in the app tree and the published
+/// site. Without it a post could end up in an orphaned `<slug>/posts/` folder
+/// that has no `page.yml`, making the whole page invisible everywhere.
+fn ensure_page_meta(posts_dir: &Path) -> AppResult<()> {
+    let page_dir = match posts_dir.parent() {
+        Some(p) => p.to_path_buf(),
+        None => return Ok(()),
+    };
+    if page_dir.join(PAGE_FILE).exists() {
+        return Ok(());
+    }
+    let Some(slug) = page_dir.file_name().map(|s| s.to_string_lossy().to_string()) else {
+        return Ok(());
+    };
+    let input = PageInput {
+        name: slug.clone(),
+        slug: slug.clone(),
+        description: String::new(),
+        cover: String::new(),
+        parent: None,
+        order: None,
+    };
+    atomic_write(&page_dir.join(PAGE_FILE), &serialize_page(&input))?;
     Ok(())
 }
 
@@ -690,7 +728,7 @@ pub fn scan_media(repo: &Path) -> AppResult<Vec<MediaFile>> {
                 out.push(MediaFile {
                     path: af.display().to_string(),
                     rel_path: rel,
-                    page,
+                    page: page.clone(),
                     post: post.clone(),
                     file_name: fname,
                     bytes,
@@ -848,6 +886,33 @@ mod tests {
             },
         );
         assert!(r.is_err());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_post_into_unknown_page_provisions_page_meta() {
+        let root = repo();
+        let slug = write_post(
+            &root,
+            &PostInput {
+                page_slug: "brand-new-page".to_string(),
+                meta: PostMeta {
+                    title: "Hello".to_string(),
+                    slug: "hello".to_string(),
+                    status: "published".to_string(),
+                    ..Default::default()
+                },
+                body: "body".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(slug, "hello");
+        // Writing a post into a never-created page must provision page.yml so
+        // the page is visible in the tree and on the published site.
+        let page_dir = resolve_in_repo(&root, "content/pages/brand-new-page").unwrap();
+        assert!(page_dir.join("page.yml").exists());
+        let pages = list_pages(&root).unwrap();
+        assert!(pages.iter().any(|p| p.slug == "brand-new-page"));
         std::fs::remove_dir_all(&root).ok();
     }
 }

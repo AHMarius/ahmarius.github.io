@@ -46,7 +46,10 @@ function breadcrumb(pagesBySlug, slug) {
 }
 
 function pageIndexPage(hierarchy) {
-  const cards = hierarchy.roots.map((page) => pageCard(page, `${page.slug}/index.html`, `${page.slug}/`)).join('\n');
+  const publishedCounts = publishedCountsByDir(hierarchy.postsByPage);
+  const cards = hierarchy.roots
+    .map((page) => pageCard({ ...page, postCount: publishedCounts.get(page.dir) || 0 }, `${page.slug}/index.html`, `${page.slug}/`))
+    .join('\n');
   const content = `
     <header class="page-header devlog-header">
       <p class="section-eyebrow">Long-form writing</p>
@@ -77,7 +80,7 @@ function pageLandingPage(page, pagesBySlug, posts) {
   }).join('\n');
 
   const postCards = posts.map((post) => {
-    const href = `${post.publicSlug}.html`;
+    const href = `${post.slug}.html`;
     return `
       <article class="devlog-card" data-search="${escapeAttribute(`${post.title} ${post.excerpt} ${post.tags.join(' ')}`)}">
         <div class="devlog-card-header">
@@ -119,6 +122,14 @@ function pageLandingPage(page, pagesBySlug, posts) {
 
 function postsForPage(posts, slug) {
   return posts.filter((p) => p.pageSlug === slug);
+}
+
+function publishedCountsByDir(postsByPage) {
+  const counts = new Map();
+  for (const [dir, posts] of postsByPage) {
+    counts.set(dir, posts.filter((p) => p.status === 'published').length);
+  }
+  return counts;
 }
 
 function readPostPublic(filePath, pageSlug) {
