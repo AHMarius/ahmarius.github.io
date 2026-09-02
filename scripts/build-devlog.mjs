@@ -421,7 +421,8 @@ async function copyDistTree() {
   await copyDir(ROOT, DIST_DIR);
 }
 
-async function main() {
+export async function buildLegacyDevlog(opts = {}) {
+  const { copyDist = true, log = console } = opts;
   await ensureDirectories();
   const posts = await readPosts();
   const publishedPosts = posts.filter((post) => post.status === 'published');
@@ -434,11 +435,18 @@ async function main() {
     await fs.writeFile(path.join(DEVLOG_DIR, `${post.slug}.html`), postPage(post, true), 'utf8');
   }
 
-  await copyDistTree();
-  console.log(`Built ${publishedPosts.length} devlog posts.`);
+  if (copyDist) await copyDistTree();
+  log.log(`Built ${publishedPosts.length} devlog posts.`);
+  return { posts: publishedPosts.length };
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+async function main() {
+  await buildLegacyDevlog();
+}
+
+if (process.argv[1] === import.meta.url || process.argv[1] === new URL(import.meta.url).pathname) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
