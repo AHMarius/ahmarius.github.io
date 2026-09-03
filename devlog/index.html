@@ -6,15 +6,18 @@
     <title>Devlog — Alexandru-Marius Hrițcu</title>
     <meta name="description" content="Project notes, technical decisions, and engineering experiments from Alexandru-Marius Hrițcu." />
     <link rel="canonical" href="https://ahmarius.github.io/devlog.html" />
-    <link rel="icon" type="image/svg+xml" href="assets/site/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="../assets/site/favicon.svg" />
     <meta name="theme-color" content="#000000" />
-    <link rel="stylesheet" href="assets/css/style.css" />
-    <link rel="stylesheet" href="assets/css/devlog.css" />
-    <script defer src="assets/js/hero-fluid.js"></script>
-    <script defer src="assets/js/script.js"></script>
-    <script defer src="assets/js/devlog.js"></script>
+    <link rel="stylesheet" href="../assets/css/style.css" />
+    <link rel="stylesheet" href="../assets/css/devlog.css" />
+    <link rel="stylesheet" href="../assets/css/pages.css" />
+    <link rel="stylesheet" href="../assets/css/katex.min.css" />
+    <script defer src="../assets/js/hero-fluid.js"></script>
+    <script defer src="../assets/js/script.js"></script>
+    <script defer src="../assets/js/devlog.js"></script>
+    
   </head>
-  <body>
+  <body class="">
     <a class="skip-link" href="#main-content">Skip to main content</a>
     <canvas id="hero-fluid" aria-hidden="true"></canvas>
     <nav class="topnav">
@@ -27,21 +30,23 @@
         </button>
       </div>
       <ul id="mobile-menu" class="mobile-menu" hidden>
-        <li><a href="index.html">Home</a></li>
-        <li><a href="projects.html">Projects</a></li>
-        <li><a href="games.html">Games</a></li>
-        <li><a href="about.html">About</a></li>
-        <li><a href="about.html#contact">Contact</a></li>
-        <li><a aria-current="page" href="devlog.html">Devlog</a></li>
+        <li><a href="../index.html">Home</a></li>
+        <li><a href="../projects.html">Projects</a></li>
+        <li><a href="../games.html">Games</a></li>
+        <li><a href="../pages.html">Pages</a></li>
+        <li><a href="../about.html">About</a></li>
+        <li><a href="../about.html#contact">Contact</a></li>
+        <li><a href="../devlog.html" aria-current="page">Devlog</a></li>
       </ul>
     </nav>
+    
     <header class="page-header devlog-header">
       <p class="section-eyebrow">Project notes</p>
       <h1>Devlog</h1>
       <p class="section-intro">A lightweight journal of the technical choices, experiments, and learning moments behind the work on this site.</p>
     </header>
     <main id="main-content" class="devlog-shell">
-      <section class="devlog-toolbar" aria-label="Devlog filters">
+            <section class="devlog-toolbar" aria-label="Devlog filters">
         <div class="devlog-filter">
           <label for="devlog-search">Search</label>
           <input id="devlog-search" type="search" placeholder="Search posts..." />
@@ -50,14 +55,14 @@
           <label for="devlog-tag">Tag</label>
           <select id="devlog-tag">
             <option value="all">All tags</option>
-            
+            <option value="Simulation">Simulation</option>
           </select>
         </div>
         <div class="devlog-filter">
           <label for="devlog-tech">Technology</label>
           <select id="devlog-tech">
             <option value="all">All technologies</option>
-            
+            <option value="C++">C++</option>
           </select>
         </div>
         <div class="devlog-filter">
@@ -76,8 +81,25 @@
           </select>
         </div>
       </section>
-      <div class="devlog-grid"></div>
+      <div class="devlog-grid">
+    <article class="devlog-card" data-search="First Solver First Solver This is a test post with inline math and a block: fluid-dynamics Simulation C++" data-tags="Simulation" data-technologies="C++" data-project="" data-status="published">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">First Solver</h3>
+        <span class="devlog-meta">2026-09-01</span>
+      </div>
+      <p>First Solver This is a test post with inline math and a block:</p>
+      <div class="devlog-tags"><span class="devlog-tag">Simulation</span></div>
+      <div class="devlog-tech"><span class="devlog-tech-item">C++</span></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">1 min read</span>
+        
+        <span class="devlog-meta devlog-page">fluid-dynamics</span>
+        <a class="devlog-link" href="first-solver.html">Read article</a>
+      </div>
+    </article>
+  </div>
       <div id="devlog-empty" class="devlog-empty">No posts match the current filters.</div>
     </main>
+  
   </body>
 </html>
