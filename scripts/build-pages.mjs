@@ -12,7 +12,7 @@ const OUT_DIR = path.join(ROOT, 'pages');
 const PUBLIC_HREF = 'pages.html';
 
 function relFromPage(depth) {
-  return depth <= 1 ? '' : '../'.repeat(depth - 1);
+  return depth > 0 ? '../'.repeat(depth) : '';
 }
 
 export function pageCard(page, href, coverRoot = '') {
@@ -97,7 +97,7 @@ function pageLandingPage(page, pagesBySlug, posts) {
     `;
   }).join('\n');
 
-  const relativeRoot = relFromPage(0);
+  const relativeRoot = relFromPage(1);
   const content = `
     <header class="page-header page-landing-header">
       <nav class="page-breadcrumb" aria-label="Breadcrumb">${crumbHtml}</nav>
@@ -116,6 +116,7 @@ function pageLandingPage(page, pagesBySlug, posts) {
     canonical: `https://ahmarius.github.io/pages/${page.slug}/index.html`,
     cssAssets: ['assets/css/style.css', 'assets/css/devlog.css', 'assets/css/pages.css', 'assets/css/katex.min.css'],
     activeNav: 'pages',
+    depth: 1,
     content,
   });
 }
@@ -179,6 +180,7 @@ function postPagePublic(post, crumbs, pagesBySlug) {
     canonical: `https://ahmarius.github.io/pages/${post.pageSlug}/${post.slug}.html`,
     cssAssets: ['assets/css/style.css', 'assets/css/devlog.css', 'assets/css/pages.css', 'assets/css/katex.min.css'],
     activeNav: 'pages',
+    depth: 1,
     content,
   });
 }

@@ -209,6 +209,12 @@ fn auto_detect_repo() -> Option<PathBuf> {
 
     for cand in candidates {
         if git::repo_valid(&cand) {
+            // `cand` may be any directory inside the worktree (e.g. the app's
+            // own subfolder). Resolve it to the Git worktree root so content
+            // and the site build always target the ahmarius.github.io root.
+            if let Some(toplevel) = git::git_toplevel(&cand) {
+                return Some(toplevel);
+            }
             return Some(cand);
         }
     }

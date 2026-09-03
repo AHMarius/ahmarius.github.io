@@ -228,6 +228,7 @@ function showPagesView() {
       <div class="card-actions">
         <button data-open-page="${esc(node.slug)}" class="btn">Open</button>
         <button data-edit-page="${esc(node.slug)}" class="btn">Edit</button>
+        <button data-del-page="${esc(node.slug)}" class="btn danger">Delete</button>
       </div>
     `;
     grid.appendChild(card);
@@ -241,6 +242,12 @@ function showPagesView() {
   );
   grid.querySelectorAll("[data-edit-page]").forEach((b) =>
     b.addEventListener("click", () => openPageEditor((b as HTMLElement).dataset["edit-page"]!)),
+  );
+  grid.querySelectorAll("[data-del-page]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const slug = (b as HTMLElement).dataset["del-page"]!;
+      deletePage(slug);
+    }),
   );
 }
 
@@ -261,6 +268,7 @@ function showAllPostsView() {
         <div class="row-meta">${esc(humanDate(p.updated_date))}</div>
         <div class="row-actions">
           <button data-edit="${esc(p.page)}|${esc(p.slug)}" class="btn">Edit</button>
+          <button data-del="${esc(p.page)}|${esc(p.slug)}" class="btn danger">Delete</button>
         </div>
       `;
       list.appendChild(row);
@@ -273,6 +281,12 @@ function showAllPostsView() {
         showPostView(page, slug);
       });
     });
+    list.querySelectorAll("[data-del]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const [page, slug] = (b as HTMLElement).dataset["del"]!.split("|");
+        deletePost(page, slug);
+      });
+    });
   });
 }
 
@@ -280,6 +294,63 @@ function emptyState(title: string, sub: string) {
   const e = el("div", "empty-state");
   e.innerHTML = `<h3>${esc(title)}</h3><p>${esc(sub)}</p>`;
   return e;
+}
+
+function confirmDialog(title: string, message: string, confirmLabel = "Delete"): Promise<boolean> {
+  return new Promise((resolve) => {
+    const overlay = el("div", "overlay");
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${esc(title)}</h2>
+        <p>${esc(message)}</p>
+        <div class="modal-actions">
+          <button id="cf-cancel" class="btn">Cancel</button>
+          <button id="cf-ok" class="btn danger">${esc(confirmLabel)}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const cleanup = (result: boolean) => {
+      overlay.remove();
+      resolve(result);
+    };
+    $("#cf-cancel", overlay)!.onclick = () => cleanup(false);
+    $("#cf-ok", overlay)!.onclick = () => cleanup(true);
+    overlay.addEventListener("click", (e: Event) => {
+      if (e.target === overlay) cleanup(false);
+    });
+  });
+}
+
+async function deletePage(slug: string) {
+  const yes = await confirmDialog(
+    `Delete page "${slug}"?`,
+    "This removes the page folder and all its posts from your content. This cannot be undone locally.",
+  );
+  if (!yes) return;
+  await cell(async () => {
+    await call("delete_page", { slug });
+  });
+  setStatus(`Deleted page ${slug}`);
+  await refreshTree();
+  showPagesView();
+}
+
+async function deletePost(page: string, slug: string) {
+  const yes = await confirmDialog(
+    `Delete post "${slug}"?`,
+    `This deletes the post from the "${page}" page. This cannot be undone locally.`,
+  );
+  if (!yes) return;
+  await cell(async () => {
+    await call("delete_post", { pageSlug: page, postSlug: slug });
+  });
+  setStatus(`Deleted post ${slug}`);
+  await refreshTree();
+  if (state.view.kind === "page" && state.view.slug === page) showPageView(page);
+  else if (state.view.kind === "post" && state.view.page === page) showPageView(page);
+  else if (state.view.kind === "allposts") showAllPostsView();
+  else showPagesView();
 }
 
 async function showPageView(slug: string) {
@@ -295,11 +366,13 @@ async function showPageView(slug: string) {
     const newPost = el("button", "btn primary", "+ New Post");
     const newSub = el("button", "btn", "+ New Sub-page");
     const editPage = el("button", "btn", "Edit Page");
-    actions.append(newPost, newSub, editPage);
+    const delPage = el("button", "btn danger", "Delete Page");
+    actions.append(newPost, newSub, editPage, delPage);
     v.appendChild(actions);
     newPost.addEventListener("click", () => openPostEditor(slug, null));
     newSub.addEventListener("click", () => openPageEditor(null, slug));
     editPage.addEventListener("click", () => openPageEditor(slug));
+    delPage.addEventListener("click", () => deletePage(slug));
     const posts = await call("list_posts");
     const mine = (posts || []).filter((p: any) => p.page === slug);
     const list = el("div", "rows");
@@ -307,13 +380,19 @@ async function showPageView(slug: string) {
       const row = el("div", "row");
       row.innerHTML = `<div class="row-main"><strong>${esc(p.title)}</strong><span class="pill ${esc(p.status)}">${esc(p.status)}</span></div>
         <div class="row-meta">${esc(humanDate(p.updated_date))}</div>
-        <div class="row-actions"><button data-edit="${esc(p.slug)}" class="btn">Edit</button></div>`;
+        <div class="row-actions"><button data-edit="${esc(p.slug)}" class="btn">Edit</button>
+        <button data-del="${esc(p.slug)}" class="btn danger">Delete</button></div>`;
       list.appendChild(row);
     });
     if (!mine.length) list.appendChild(emptyState("This page has no posts yet.", "Create your first post."));
     v.appendChild(list);
     list.querySelectorAll("[data-edit]").forEach((b) => {
       b.addEventListener("click", () => showPostView(slug, (b as HTMLElement).dataset["edit"]!));
+    });
+    list.querySelectorAll("[data-del]").forEach((b) => {
+      b.addEventListener("click", () => {
+        deletePost(slug, (b as HTMLElement).dataset["del"]!);
+      });
     });
   });
 }
@@ -547,7 +626,7 @@ function openPublish() {
       <h4>Unstaged content changes</h4><pre class="diffbox">${unstaged || "(none)"}</pre>
       ${unrel}
       <label>Commit message<input id="pub-msg" value="Update portfolio content" /></label>
-      <p class="muted">Will run the build, then stage only content/pages/assets/devlog/dist paths.</p>
+      <p class="muted">Will run the build, then stage only content/assets/devlog paths.</p>
     `;
     $("#pub-go", overlay)!.onclick = async () => {
       $("#pub-go", overlay)!.disabled = true;
@@ -562,11 +641,11 @@ function openPublish() {
         const status2 = await call("git_status");
         const paths = new Set<string>();
         (status2.unstaged || []).forEach((f: any) => {
-          if (/^(content\/|pages\/|pages\.html|devlog\/|devlog\.html|assets\/dist)/.test(f.path)) paths.add(f.path);
+          if (/^(content\/|devlog\/|devlog\.html|assets\/dist)/.test(f.path)) paths.add(f.path);
         });
         (status2.staged || []).forEach((f: any) => paths.add(f.path));
         (status2.untracked || []).forEach((p: any) => {
-          if (/^(content\/|pages\/|pages\.html|devlog\/|devlog\.html|assets\/dist)/.test(p)) paths.add(p);
+          if (/^(content\/|devlog\/|devlog\.html|assets\/dist)/.test(p)) paths.add(p);
         });
         body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)…</p>`;
         await call("git_stage_paths", { paths: Array.from(paths) });
