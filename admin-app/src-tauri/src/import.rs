@@ -42,8 +42,6 @@ pub fn import_asset(
     source_path: &str,
     original_name: &str,
 ) -> AppResult<ImportAssetResult> {
-    let page_slug = ensure_safe_slug(page_slug)?;
-    let post_slug = ensure_safe_slug(post_slug)?;
     let source = PathBuf::from(source_path);
     if !source.is_file() {
         return Err(AppError::Validation(format!(
@@ -74,12 +72,48 @@ pub fn import_asset(
         }
     }
 
+    let bytes = std::fs::read(&source)?;
+    write_asset_bytes(repo, page_slug, post_slug, original_name, &bytes, warning)
+}
+
+/// Same as `import_asset`, but takes raw bytes (clippboard paste / screenshots)
+/// instead of a source file on disk.
+pub fn import_asset_bytes(
+    repo: &Path,
+    page_slug: &str,
+    post_slug: &str,
+    file_name: &str,
+    data: &[u8],
+) -> AppResult<ImportAssetResult> {
+    if data.is_empty() {
+        return Err(AppError::Validation("Pasted image is empty.".into()));
+    }
+    let mut warning = None;
+    if data.len() > MAX_VIDEO_BYTES as usize {
+        warning = Some(format!(
+            "This file is larger than 25 MiB. Consider external hosting to keep the repo small."
+        ));
+    }
+    write_asset_bytes(repo, page_slug, post_slug, file_name, data, warning)
+}
+
+fn write_asset_bytes(
+    repo: &Path,
+    page_slug: &str,
+    post_slug: &str,
+    file_name: &str,
+    data: &[u8],
+    warning: Option<String>,
+) -> AppResult<ImportAssetResult> {
+    let page_slug = ensure_safe_slug(page_slug)?;
+    let post_slug = ensure_safe_slug(post_slug)?;
     let assets_dir = resolve_in_repo(
         repo,
         &format!("content/pages/{}/posts/{}/assets", page_slug, post_slug),
-    )?;    std::fs::create_dir_all(&assets_dir)?;
+    )?;
+    std::fs::create_dir_all(&assets_dir)?;
 
-    let base = sanitize_filename(original_name);
+    let base = sanitize_filename(file_name);
     let mut candidate = base.clone();
     let mut counter = 1;
     while assets_dir.join(&candidate).exists() {
@@ -100,12 +134,59 @@ pub fn import_asset(
     }
 
     let dest = assets_dir.join(&candidate);
-    std::fs::copy(&source, &dest)?;
+    std::fs::write(&dest, data)?;
     Ok(ImportAssetResult {
         file_name: candidate.clone(),
         rel_path: format!("assets/{}", candidate),
         warning,
     })
+}
+
+/// Capture the screen (best-effort via the OS screenshot tool), save it
+/// directly into the post's assets folder, and return the import result so
+/// the Markdown tag can be inserted at the cursor.
+pub fn capture_screenshot(
+    repo: &Path,
+    page_slug: &str,
+    post_slug: &str,
+) -> AppResult<ImportAssetResult> {
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let tmp = std::env::temp_dir().join(format!(
+        "studio-shot-{}-{}.png",
+        std::process::id(),
+        stamp
+    ));
+    let tmp_str = tmp.to_string_lossy().to_string();
+
+    let attempts: [(&str, Vec<&str>); 4] = [
+        ("import", vec!["-window", "root", tmp_str.as_str()]),
+        ("gnome-screenshot", vec!["-f", tmp_str.as_str()]),
+        ("scrot", vec!["-z", tmp_str.as_str()]),
+        ("spectacle", vec!["-b", "-n", "-o", tmp_str.as_str()]),
+    ];
+
+    let captured = attempts.iter().any(|(bin, args)| {
+        Command::new(bin)
+            .args(args.as_slice())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+            && tmp.is_file()
+    });
+
+    if !captured {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(AppError::Command(
+            "No screenshot tool found. Install ImageMagick (`import`), gnome-screenshot, \
+             scrot, or spectacle."
+                .into(),
+        ));
+    }
+
+    let name = format!("screenshot-{}.png", stamp);
+    let res = import_asset(repo, page_slug, post_slug, tmp.to_string_lossy().as_ref(), &name);
+    let _ = std::fs::remove_file(&tmp);
+    res
 }
 
 #[derive(Serialize, Debug, Clone)]

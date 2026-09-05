@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initBackToTop();
   initScrollProgress();
   initRevealOnScroll();
+  initSiteSearch();
 });
 
 /* ------------------------------------------------------------------------
@@ -804,3 +805,106 @@ function initGamesPage() {
 }
 
 document.addEventListener("DOMContentLoaded", initGamesPage);
+
+/* ------------------------------------------------------------------------
+ * Site-wide search (JSON search index + overlay)
+ * ------------------------------------------------------------------------ */
+
+function initSiteSearch() {
+  const button = document.getElementById("nav-search-btn");
+  const overlay = document.getElementById("search-overlay");
+  const input = document.getElementById("search-input");
+  const results = document.getElementById("search-results");
+  const closeBtn = document.getElementById("search-close");
+  if (!button || !overlay || !input || !results) return;
+
+  let index = null;
+  const indexUrl = button.dataset.indexUrl || "search-index.json";
+
+  async function loadIndex() {
+    if (index) return index;
+    try {
+      const res = await fetch(indexUrl);
+      index = await res.json();
+    } catch {
+      index = [];
+    }
+    return index;
+  }
+
+  function open() {
+    overlay.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    input.value = "";
+    results.innerHTML = '<p class="search-hint">Type to search posts, tags, and projects.</p>';
+    window.setTimeout(() => input.focus(), 10);
+  }
+
+  function close() {
+    overlay.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  }
+
+  function match(entry, term) {
+    const haystack = [
+      entry.title,
+      entry.excerpt,
+      entry.tags,
+      entry.technologies,
+      entry.project,
+      entry.page,
+    ].join(" ").toLowerCase();
+    return term.split(/\s+/).every((word) => haystack.includes(word));
+  }
+
+  async function render(term) {
+    if (term.length < 2) {
+      results.innerHTML = '<p class="search-hint">Type at least 2 characters.</p>';
+      return;
+    }
+    const entries = await loadIndex();
+    const hits = entries.filter((e) => match(e, term)).slice(0, 12);
+    if (!hits.length) {
+      results.innerHTML = '<p class="search-hint">No results.</p>';
+      return;
+    }
+    results.innerHTML = hits
+      .map(
+        (e) => `<a href="${e.url}" class="search-result" role="option">
+          <span class="search-result-title">${escapeHtml(e.title)}</span>
+          <span class="search-result-meta">${escapeHtml(e.page || "")} · ${escapeHtml(e.date || "")}${e.project ? " · " + escapeHtml(e.project) : ""}</span>
+        </a>`,
+      )
+      .join("");
+  }
+
+  function isVisible() {
+    return !overlay.hidden;
+  }
+
+  button.addEventListener("click", open);
+  closeBtn.addEventListener("click", close);
+  input.addEventListener("input", () => render(input.value.trim().toLowerCase()));
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+  document.addEventListener("click", (event) => {
+    if (isVisible() && !overlay.contains(event.target) && event.target !== button) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isVisible()) close();
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      isVisible() ? close() : open();
+    }
+  });
+
+  function escapeHtml(value = "") {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+}

@@ -6,6 +6,41 @@ const PAGE_FILE: &str = "page.yml";
 const POSTS_DIR: &str = "posts";
 const SUBPAGES_DIR: &str = "subpages";
 const ASSETS_DIR: &str = "assets";
+const PROJECTS_DIR: &str = "content/projects";
+const PROJECT_FILE: &str = "project.yml";
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct ProjectInput {
+    #[serde(default)]
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub repo_url: String,
+    #[serde(default)]
+    pub live_url: String,
+    #[serde(default)]
+    pub status: String, // active | paused | archived
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ProjectRow {
+    pub slug: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub repo_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub live_url: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub post_count: usize,
+    pub path: String,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct PostMeta {    #[serde(default)]
@@ -30,6 +65,10 @@ pub struct PostMeta {    #[serde(default)]
     pub subtitle: String,
     #[serde(default)]
     pub cover: String,
+    #[serde(default)]
+    pub series: String,
+    #[serde(default)]
+    pub part: i64,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -57,6 +96,10 @@ pub struct PageInput {
     pub parent: Option<String>,
     #[serde(default)]
     pub order: Option<i64>,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub devlog_repo: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -72,6 +115,8 @@ pub struct PostRow {
     pub project: String,
     pub tags: Vec<String>,
     pub technologies: Vec<String>,
+    pub series: String,
+    pub part: i64,
     pub path: String,
 }
 
@@ -83,6 +128,10 @@ pub struct PageRow {
     pub cover: String,
     pub parent: Option<String>,
     pub order: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub devlog_repo: String,
     pub path: String,
 }
 
@@ -94,6 +143,8 @@ pub struct ContentNode {
     pub name: String,
     pub status: String,
     pub path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String, // "page" | "devlog" (page nodes only)
     #[serde(default)]
     pub updated_date: String,
     #[serde(default)]
@@ -144,6 +195,12 @@ pub fn serialize_post(meta: &PostMeta, body: &str) -> String {
     if !meta.cover.is_empty() {
         lines.push(yaml_string("cover", &meta.cover));
     }
+    if !meta.series.is_empty() {
+        lines.push(yaml_string("series", &meta.series));
+    }
+    if meta.part > 0 {
+        lines.push(format!("part: {}", meta.part));
+    }
     if !meta.excerpt.is_empty() {
         lines.push(yaml_string("excerpt", &meta.excerpt));
     }
@@ -169,6 +226,12 @@ pub fn serialize_page(page: &PageInput) -> String {
     }
     if !page.cover.is_empty() {
         out.push_str(&yaml_string("cover", &page.cover));
+        out.push('\n');
+    }
+    out.push_str(&yaml_string("kind", if page.kind.is_empty() { "page" } else { &page.kind }));
+    out.push('\n');
+    if !page.devlog_repo.is_empty() {
+        out.push_str(&yaml_string("devlog_repo", &page.devlog_repo));
         out.push('\n');
     }
     match &page.parent {
@@ -206,6 +269,8 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
         project: String::new(),
         subtitle: String::new(),
         cover: String::new(),
+        series: String::new(),
+        part: 0,
         tags: Vec::new(),
         technologies: Vec::new(),
     };
@@ -253,6 +318,8 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
                     "project" => meta.project = value,
                     "subtitle" => meta.subtitle = value,
                     "cover" => meta.cover = value,
+                    "series" => meta.series = value,
+                    "part" => meta.part = value.parse().unwrap_or(0),
                     _ => {}
                 }
             }
@@ -318,6 +385,8 @@ fn collect_page(repo: &Path, dir: &Path, out: &mut Vec<PageRow>) -> AppResult<()
             cover: meta.cover,
             parent,
             order: meta.order,
+            kind: meta.kind,
+            devlog_repo: meta.devlog_repo,
             path: dir.display().to_string(),
         });
     }
@@ -359,6 +428,8 @@ struct PageMeta {
     cover: String,
     order: i64,
     parent: Option<String>,
+    kind: String,
+    devlog_repo: String,
 }
 
 fn parse_page_raw(raw: &str) -> (PageMeta, ()) {
@@ -369,6 +440,8 @@ fn parse_page_raw(raw: &str) -> (PageMeta, ()) {
         cover: String::new(),
         order: 100,
         parent: None,
+        kind: "page".to_string(),
+        devlog_repo: String::new(),
     };
     for line in raw.lines() {
         if let Some(kv) = line.split_once(':') {
@@ -379,6 +452,8 @@ fn parse_page_raw(raw: &str) -> (PageMeta, ()) {
                 "slug" => meta.slug = Some(value),
                 "description" => meta.description = value,
                 "cover" => meta.cover = value,
+                "kind" => meta.kind = value,
+                "devlog_repo" => meta.devlog_repo = value,
                 "order" => {
                     meta.order = value.parse().unwrap_or(100);
                 }
@@ -406,6 +481,8 @@ pub fn read_page(repo: &Path, slug: &str) -> AppResult<serde_json::Value> {
         "description": meta.description,
         "cover": meta.cover,
         "order": meta.order,
+        "kind": meta.kind,
+        "devlog_repo": meta.devlog_repo,
         "parent": parent,
     }))
 }
@@ -432,6 +509,8 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
         cover: page.cover.clone(),
         parent: page.parent.clone(),
         order: page.order,
+        kind: page.kind.clone(),
+        devlog_repo: page.devlog_repo.clone(),
     };
     atomic_write(&dir.join(PAGE_FILE), &serialize_page(&input))?;
     std::fs::create_dir_all(dir.join(POSTS_DIR))?;
@@ -442,6 +521,8 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
         cover: input.cover,
         parent: input.parent,
         order: input.order.unwrap_or(100),
+        kind: input.kind,
+        devlog_repo: input.devlog_repo,
         path: dir.display().to_string(),
     })
 }
@@ -456,6 +537,205 @@ pub fn update_page(repo: &Path, page: &PageInput) -> AppResult<()> {
 pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
     let slug = ensure_safe_slug(slug)?;
     let dir = page_dir_of(repo, &slug)?;
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir)?;
+    }
+    Ok(())
+}
+
+// ---------- Projects ----------
+
+pub fn project_dir_of(repo: &Path, slug: &str) -> AppResult<PathBuf> {
+    ensure_safe_slug(slug)?;
+    resolve_in_repo(repo, &format!("{}/{}", PROJECTS_DIR, slug))
+}
+
+pub fn list_projects(repo: &Path) -> AppResult<Vec<ProjectRow>> {
+    let root = resolve_in_repo(repo, PROJECTS_DIR)?;
+    let mut out = vec![];
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_project(repo, &p, &mut out)?;
+            }
+        }
+    }
+    out.sort_by(|a, b| a.slug.cmp(&b.slug));
+    Ok(out)
+}
+
+fn collect_project(repo: &Path, dir: &Path, out: &mut Vec<ProjectRow>) -> AppResult<()> {
+    let file = dir.join(PROJECT_FILE);
+    if !file.exists() {
+        return Ok(());
+    }
+    let slug = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let raw = std::fs::read_to_string(&file).unwrap_or_default();
+    let meta = parse_project_raw(&raw);
+    let post_count = posts_in_project(repo, &slug)?;
+    out.push(ProjectRow {
+        slug: meta.slug.unwrap_or_else(|| slug.clone()),
+        name: if meta.name.is_empty() {
+            slug.clone()
+        } else {
+            meta.name
+        },
+        repo_url: meta.repo_url,
+        live_url: meta.live_url,
+        status: meta.status,
+        description: meta.description,
+        post_count,
+        path: dir.display().to_string(),
+    });
+    Ok(())
+}
+
+fn posts_in_project(repo: &Path, slug: &str) -> AppResult<usize> {
+    let pages = list_pages(repo)?;
+    let mut count = 0usize;
+    for page in pages {
+        let posts_dir = page_dir_of(repo, &page.slug)?.join(POSTS_DIR);
+        if !posts_dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&posts_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().map(|e| e == "md").unwrap_or(false) {
+                    if let Ok(raw) = std::fs::read_to_string(&p) {
+                        let (m, _) = parse_post(&raw);
+                        if m.project == slug {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(count)
+}
+
+struct ProjectMeta {
+    name: String,
+    slug: Option<String>,
+    repo_url: String,
+    live_url: String,
+    status: String,
+    description: String,
+}
+
+fn parse_project_raw(raw: &str) -> ProjectMeta {
+    let mut meta = ProjectMeta {
+        name: String::new(),
+        slug: None,
+        repo_url: String::new(),
+        live_url: String::new(),
+        status: "active".to_string(),
+        description: String::new(),
+    };
+    for line in raw.lines() {
+        if let Some(kv) = line.split_once(':') {
+            let key = kv.0.trim();
+            let value = kv.1.trim().trim_matches('"').to_string();
+            match key {
+                "name" => meta.name = value,
+                "slug" => meta.slug = Some(value),
+                "repo_url" => meta.repo_url = value,
+                "live_url" => meta.live_url = value,
+                "status" => meta.status = value,
+                "description" => meta.description = value,
+                _ => {}
+            }
+        }
+    }
+    meta
+}
+
+fn serialize_project(p: &ProjectInput) -> String {
+    let mut lines: Vec<String> = vec![];
+    lines.push(yaml_string("name", &p.name));
+    lines.push(yaml_string("slug", &p.slug));
+    if !p.repo_url.is_empty() {
+        lines.push(yaml_string("repo_url", &p.repo_url));
+    }
+    if !p.live_url.is_empty() {
+        lines.push(yaml_string("live_url", &p.live_url));
+    }
+    if !p.status.is_empty() {
+        lines.push(yaml_string("status", &p.status));
+    }
+    if !p.description.is_empty() {
+        lines.push(yaml_string("description", &p.description));
+    }
+    lines.join("\n")
+}
+
+pub fn read_project(repo: &Path, slug: &str) -> AppResult<serde_json::Value> {
+    let dir = project_dir_of(repo, slug)?;
+    let raw = std::fs::read_to_string(dir.join(PROJECT_FILE))
+        .map_err(|_| AppError::Validation(format!("Project not found: {}", slug)))?;
+    let meta = parse_project_raw(&raw);
+    Ok(serde_json::json!({
+        "name": meta.name,
+        "slug": meta.slug.unwrap_or_else(|| slug.to_string()),
+        "repo_url": meta.repo_url,
+        "live_url": meta.live_url,
+        "status": meta.status,
+        "description": meta.description,
+        "post_count": posts_in_project(repo, slug)?,
+    }))
+}
+
+pub fn create_project(repo: &Path, project: &ProjectInput) -> AppResult<ProjectRow> {
+    let slug = if project.slug.is_empty() {
+        slugify(&project.name)
+    } else {
+        project.slug.clone()
+    };
+    ensure_safe_slug(&slug)?;
+    let dir = project_dir_of(repo, &slug)?;
+    if dir.join(PROJECT_FILE).exists() {
+        return Err(AppError::Validation(format!(
+            "Project already exists: {}",
+            slug
+        )));
+    }
+    std::fs::create_dir_all(&dir)?;
+    let mut ours = project.clone();
+    ours.slug = slug.clone();
+    if ours.name.is_empty() {
+        ours.name = slug.clone();
+    }
+    if ours.status.is_empty() {
+        ours.status = "active".to_string();
+    }
+    atomic_write(&dir.join(PROJECT_FILE), &serialize_project(&ours))?;
+    Ok(ProjectRow {
+        slug,
+        name: ours.name,
+        repo_url: ours.repo_url,
+        live_url: ours.live_url,
+        status: ours.status,
+        description: ours.description,
+        post_count: 0,
+        path: dir.display().to_string(),
+    })
+}
+
+pub fn update_project(repo: &Path, project: &ProjectInput) -> AppResult<()> {
+    let slug = ensure_safe_slug(&project.slug)?;
+    let dir = project_dir_of(repo, &slug)?;
+    atomic_write(&dir.join(PROJECT_FILE), &serialize_project(project))?;
+    Ok(())
+}
+
+pub fn delete_project(repo: &Path, slug: &str) -> AppResult<()> {
+    let slug = ensure_safe_slug(slug)?;
+    let dir = project_dir_of(repo, &slug)?;
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
     }
@@ -519,6 +799,8 @@ fn read_post_from_path(_repo: &Path, page_slug: &str, path: &Path) -> AppResult<
         project: meta.project,
         tags: meta.tags,
         technologies: meta.technologies,
+        series: meta.series,
+        part: meta.part,
         path: path.display().to_string(),
     })
 }
@@ -540,6 +822,8 @@ pub fn read_post(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<ser
         "project": meta.project,
         "subtitle": meta.subtitle,
         "cover": meta.cover,
+        "series": meta.series,
+        "part": meta.part,
         "tags": meta.tags,
         "technologies": meta.technologies,
         "body": body,
@@ -576,6 +860,8 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
         project: input.meta.project.clone(),
         subtitle: input.meta.subtitle.clone(),
         cover: input.meta.cover.clone(),
+        series: input.meta.series.clone(),
+        part: input.meta.part,
         tags: input.meta.tags.clone(),
         technologies: input.meta.technologies.clone(),
     };
@@ -624,6 +910,8 @@ fn ensure_page_meta(posts_dir: &Path) -> AppResult<()> {
         cover: String::new(),
         parent: None,
         order: None,
+        kind: String::new(),
+        devlog_repo: String::new(),
     };
     atomic_write(&page_dir.join(PAGE_FILE), &serialize_page(&input))?;
     Ok(())
@@ -641,6 +929,7 @@ pub fn content_tree(repo: &Path) -> AppResult<Vec<ContentNode>> {
             name: page.name.clone(),
             status: String::new(),
             path: page.path.clone(),
+            kind: page.kind.clone(),
             updated_date: String::new(),
             children: Vec::new(),
         };
@@ -652,6 +941,7 @@ pub fn content_tree(repo: &Path) -> AppResult<Vec<ContentNode>> {
                 name: post.title.clone(),
                 status: post.status.clone(),
                 path: post.path.clone(),
+                kind: String::new(),
                 updated_date: post.updated_date.clone(),
                 children: Vec::new(),
             });
@@ -790,6 +1080,52 @@ fn today_iso() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
 
+/// Summary of the most recent site build, surfaced in the publish modal so the
+/// editor can see what the last build produced before deploying.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct SiteBuildInfo {
+    pub generated_at: Option<String>,
+    pub devlog_posts: usize,
+    pub devlog_index: bool,
+    pub feed_generated: bool,
+    pub sitemap_generated: bool,
+    pub robots_generated: bool,
+    pub search_index_generated: bool,
+    pub archive_folders: Vec<String>,
+}
+
+pub fn site_build_info(repo: &Path) -> AppResult<SiteBuildInfo> {
+    let devlog = resolve_in_repo(repo, "devlog")?;
+    let exists = |name: &str| devlog.join(name).exists();
+    let mut info = SiteBuildInfo {
+        devlog_posts: 0,
+        devlog_index: exists("index.html"),
+        feed_generated: repo.join("feed.xml").exists(),
+        sitemap_generated: repo.join("sitemap.xml").exists(),
+        robots_generated: repo.join("robots.txt").exists(),
+        search_index_generated: repo.join("search-index.json").exists(),
+        archive_folders: Vec::new(),
+        ..Default::default()
+    };
+    if let Ok(md) = repo.join("devlog.html").metadata() {
+        if let Ok(t) = md.modified() {
+            let dt: chrono::DateTime<chrono::Local> = t.into();
+            info.generated_at = Some(dt.format("%Y-%m-%d %H:%M:%S").to_string());
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(&devlog) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".html") && name != "index.html" {
+                info.devlog_posts += 1;
+            } else if ["tag", "tech", "project"].contains(&name.as_str()) {
+                info.archive_folders.push(name);
+            }
+        }
+    }
+    Ok(info)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -813,6 +1149,8 @@ mod tests {
                 cover: String::new(),
                 parent: None,
                 order: None,
+                kind: "devlog".to_string(),
+                devlog_repo: String::new(),
             },
         )
         .unwrap();
@@ -831,11 +1169,85 @@ mod tests {
                 cover: String::new(),
                 parent: Some("fluid-dynamics".to_string()),
                 order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
             },
         )
         .unwrap();
         let sub = resolve_in_repo(&root, "content/pages/fluid-dynamics/subpages/gpu-port").unwrap();
         assert!(sub.join(PAGE_FILE).exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn projects_crud_and_post_count() {
+        let root = repo();
+        let created = create_project(
+            &root,
+            &ProjectInput {
+                slug: "shader-lab".to_string(),
+                name: "Shader Lab".to_string(),
+                repo_url: "https://github.com/AHMarius/shader-lab".to_string(),
+                live_url: String::new(),
+                status: "active".to_string(),
+                description: "GPU experiments".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(created.slug, "shader-lab");
+        assert!(resolve_in_repo(
+            &root,
+            "content/projects/shader-lab/project.yml"
+        )
+        .is_ok());
+
+        let listed = list_projects(&root).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "Shader Lab");
+        assert_eq!(listed[0].post_count, 0);
+
+        // Link a post to the project and confirm the count reflects it.
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(&posts).unwrap();
+        let meta = PostMeta {
+            title: "Procedural grids".to_string(),
+            slug: "x".to_string(),
+            date: "2026-01-05".to_string(),
+            updated_date: String::new(),
+            status: "published".to_string(),
+            excerpt: String::new(),
+            featured: false,
+            page: "fluid-dynamics".to_string(),
+            project: "shader-lab".to_string(),
+            subtitle: String::new(),
+            cover: String::new(),
+            series: String::new(),
+            part: 0,
+            tags: vec![],
+            technologies: vec![],
+        };
+        atomic_write(&posts.join("x.md"), &serialize_post(&meta, "body")).unwrap();
+        let listed2 = list_projects(&root).unwrap();
+        assert_eq!(listed2[0].post_count, 1);
+
+        update_project(
+            &root,
+            &ProjectInput {
+                slug: "shader-lab".to_string(),
+                name: "Shader Lab 2".to_string(),
+                repo_url: String::new(),
+                live_url: String::new(),
+                status: "paused".to_string(),
+                description: String::new(),
+            },
+        )
+        .unwrap();
+        let read = read_project(&root, "shader-lab").unwrap();
+        assert_eq!(read["status"], "paused");
+        assert_eq!(read["name"], "Shader Lab 2");
+
+        delete_project(&root, "shader-lab").unwrap();
+        assert!(!resolve_in_repo(&root, "content/projects/shader-lab".to_string().as_str()).unwrap().exists());
         std::fs::remove_dir_all(&root).ok();
     }
 

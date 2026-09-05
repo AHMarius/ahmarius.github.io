@@ -22,6 +22,20 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
+export interface Heading {
+  level: number;
+  text: string;
+  slug: string;
+}
+
+function slugifyHeading(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/&[a-z]+;/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function inline(text: string): string {
   let out = escapeHtml(text);
   out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
@@ -34,8 +48,14 @@ function inline(text: string): string {
 }
 
 export function markdownToHtml(markdown: string): string {
+  return markdownToHtmlDetailed(markdown).html;
+}
+
+export function markdownToHtmlDetailed(markdown: string): { html: string; headings: Heading[] } {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
+  const headings: Heading[] = [];
+  const headingSeen: Record<string, number> = {};
   let paragraph: string[] = [];
   let inCode = false;
   let codeLang = "";
@@ -170,7 +190,12 @@ export function markdownToHtml(markdown: string): string {
       flushTable();
       const level = line.match(/^#+/)?.[0].length || 1;
       const text = line.replace(/^#{1,6}\s+/, "");
-      html.push(`<h${level}>${inline(text)}</h${level}>`);
+      const baseSlug = slugifyHeading(text) || `heading-${level}`;
+      const seen = headingSeen[baseSlug] ?? 0;
+      headingSeen[baseSlug] = seen + 1;
+      const slug = seen === 0 ? baseSlug : `${baseSlug}-${seen + 1}`;
+      headings.push({ level, text, slug });
+      html.push(`<h${level} id="${slug}">${inline(text)}</h${level}>`);
       continue;
     }
     if (/^---+\s*$/.test(line) || /^\*\*\*+\s*$/.test(line)) {
@@ -199,5 +224,5 @@ export function markdownToHtml(markdown: string): string {
   flushQuote();
   flushTable();
   if (inCode) flushCode();
-  return html.join("\n");
+  return { html: html.join("\n"), headings };
 }

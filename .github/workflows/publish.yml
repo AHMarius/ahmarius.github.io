@@ -1,0 +1,63 @@
+name: Build & publish site (incl. scheduled)
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    # Rebuild a few times a day so scheduled posts (publish_at) appear even
+    # when the editor is offline; the deploy job is skipped when nothing changed.
+    - cron: '0 6,12,18,0 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build site (publish mode, filters drafts + scheduled posts)
+        run: npm run build -- --mode publish
+      - name: Commit rebuild artifacts (scheduled builds only)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A devlog pages feed.xml atom.xml sitemap.xml robots.txt search-index.json devlog.html pages.html assets/og
+          if git diff --cached --quiet; then
+            echo "No content changes; nothing to commit."
+          else
+            git commit -m "chore: scheduled site rebuild"
+            git push
+          fi
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # The site publishes from the `main` branch by default; this job only adds
+    # Actions-based deployment when Pages > Source is set to "GitHub Actions".
+    continue-on-error: true
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

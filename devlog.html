@@ -37,8 +37,17 @@
         <li><a href="about.html">About</a></li>
         <li><a href="about.html#contact">Contact</a></li>
         <li><a href="devlog.html" aria-current="page">Devlog</a></li>
+        <li><button type="button" class="nav-search-btn" id="nav-search-btn" aria-haspopup="dialog" aria-expanded="false" data-index-url="search-index.json">Search</button></li>
       </ul>
     </nav>
+    <div id="search-overlay" class="search-overlay" hidden role="dialog" aria-modal="true" aria-label="Site search">
+      <div class="search-overlay-panel">
+        <label for="search-input">Search the site</label>
+        <input id="search-input" type="search" placeholder="Search posts, tags, projects..." autocomplete="off" />
+        <div id="search-results" class="search-results" role="listbox"></div>
+        <button type="button" class="search-close" id="search-close">Close</button>
+      </div>
+    </div>
     
     <header class="page-header devlog-header">
       <p class="section-eyebrow">Project notes</p>
@@ -54,7 +63,7 @@
           <label for="devlog-tag">Tag</label>
           <select id="devlog-tag">
             <option value="all">All tags</option>
-            <option value="43r">43r</option><option value="Simulation">Simulation</option><option value="erter">erter</option>
+            <option value="43r">43r</option><option value="Notes">Notes</option><option value="Simulation">Simulation</option><option value="erter">erter</option>
           </select>
         </div>
         <div class="devlog-filter">
@@ -74,9 +83,7 @@
         <div class="devlog-filter">
           <label for="devlog-status">Status</label>
           <select id="devlog-status">
-            <option value="all">All</option>
-            <option value="published">Published</option>
-            <option value="draft">Draft</option>
+            <option value="all">All</option><option value="published">Published</option><option value="draft">Draft</option>
           </select>
         </div>
       </section>
@@ -87,13 +94,14 @@
         <span class="devlog-meta">2026-09-03</span>
       </div>
       <p>235235</p>
-      <div class="devlog-tags"><span class="devlog-tag">43r</span></div>
-      <div class="devlog-tech"><span class="devlog-tech-item">534</span></div>
+      <div class="devlog-tags"><a class="devlog-tag" href="tag/43r.html">43r</a></div>
+      <div class="devlog-tech"><a class="devlog-tech-item" href="tech/534.html">534</a></div>
       <div class="devlog-links">
         <span class="devlog-meta">1 min read</span>
-        <span class="devlog-meta">23423</span>
+        <a class="devlog-meta" href="project/23423.html">23423</a>
         <span class="devlog-meta devlog-page">525235</span>
         <a class="devlog-link" href="devlog/235235.html">Read article</a>
+        <button type="button" class="devlog-share" data-url="devlog/235235.html" aria-label="Share this post">Share</button>
       </div>
     </article>
   
@@ -104,13 +112,68 @@
         <span class="devlog-meta">2026-09-03</span>
       </div>
       <p>eterte</p>
-      <div class="devlog-tags"><span class="devlog-tag">erter</span></div>
-      <div class="devlog-tech"><span class="devlog-tech-item">ert</span></div>
+      <div class="devlog-tags"><a class="devlog-tag" href="tag/erter.html">erter</a></div>
+      <div class="devlog-tech"><a class="devlog-tech-item" href="tech/ert.html">ert</a></div>
       <div class="devlog-links">
         <span class="devlog-meta">1 min read</span>
-        <span class="devlog-meta">Testing 2222</span>
+        <a class="devlog-meta" href="project/testing-2222.html">Testing 2222</a>
         <span class="devlog-meta devlog-page">ertert</span>
         <a class="devlog-link" href="devlog/erter.html">Read article</a>
+        <button type="button" class="devlog-share" data-url="devlog/erter.html" aria-label="Share this post">Share</button>
+      </div>
+    </article>
+  
+
+    <article class="devlog-card" data-search="try2 3223 sewew  " data-tags="" data-technologies="" data-project="" data-status="draft">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">try2</h3>
+        <span class="devlog-meta">2026-09-02</span>
+      </div>
+      <p>3223</p>
+      <div class="devlog-tags"></div>
+      <div class="devlog-tech"></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">1 min read</span>
+        
+        <span class="devlog-meta devlog-page">sewew</span>
+        <a class="devlog-link" href="devlog/try2.html">Read article</a>
+        <button type="button" class="devlog-share" data-url="devlog/try2.html" aria-label="Share this post">Share</button>
+      </div>
+    </article>
+  
+
+    <article class="devlog-card" data-search="try3 idkkk sewew  " data-tags="" data-technologies="" data-project="" data-status="draft">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">try3</h3>
+        <span class="devlog-meta">2026-09-02</span>
+      </div>
+      <p>idkkk</p>
+      <div class="devlog-tags"></div>
+      <div class="devlog-tech"></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">1 min read</span>
+        
+        <span class="devlog-meta devlog-page">sewew</span>
+        <a class="devlog-link" href="devlog/try3.html">Read article</a>
+        <button type="button" class="devlog-share" data-url="devlog/try3.html" aria-label="Share this post">Share</button>
+      </div>
+    </article>
+  
+
+    <article class="devlog-card" data-search="HiddenDraftSecret This is a draft that should never be published. fluid-dynamics Notes " data-tags="Notes" data-technologies="" data-project="" data-status="draft">
+      <div class="devlog-card-header">
+        <h3 class="devlog-card-title">HiddenDraftSecret</h3>
+        <span class="devlog-meta">2026-09-01</span>
+      </div>
+      <p>This is a draft that should never be published.</p>
+      <div class="devlog-tags"><a class="devlog-tag" href="tag/notes.html">Notes</a></div>
+      <div class="devlog-tech"></div>
+      <div class="devlog-links">
+        <span class="devlog-meta">1 min read</span>
+        
+        <span class="devlog-meta devlog-page">fluid-dynamics</span>
+        <a class="devlog-link" href="devlog/hidden-draft-secret.html">Read article</a>
+        <button type="button" class="devlog-share" data-url="devlog/hidden-draft-secret.html" aria-label="Share this post">Share</button>
       </div>
     </article>
   
@@ -121,13 +184,14 @@
         <span class="devlog-meta">2026-09-01</span>
       </div>
       <p>First Solver This is a test post with inline math and a block:</p>
-      <div class="devlog-tags"><span class="devlog-tag">Simulation</span></div>
-      <div class="devlog-tech"><span class="devlog-tech-item">C++</span></div>
+      <div class="devlog-tags"><a class="devlog-tag" href="tag/simulation.html">Simulation</a></div>
+      <div class="devlog-tech"><a class="devlog-tech-item" href="tech/c.html">C++</a></div>
       <div class="devlog-links">
         <span class="devlog-meta">1 min read</span>
         
         <span class="devlog-meta devlog-page">fluid-dynamics</span>
         <a class="devlog-link" href="devlog/first-solver.html">Read article</a>
+        <button type="button" class="devlog-share" data-url="devlog/first-solver.html" aria-label="Share this post">Share</button>
       </div>
     </article>
   </div>

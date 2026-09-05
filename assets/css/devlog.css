@@ -260,6 +260,36 @@
   color: var(--color-link);
 }
 
+.series-nav {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--devlog-border);
+}
+.series-nav-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted, #6b6b6b);
+  margin-bottom: 0.6rem;
+}
+.series-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.series-nav-link {
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: 600;
+}
+.series-nav-link:hover {
+  text-decoration: underline;
+}
+.series-nav-next {
+  margin-left: auto;
+}
+
 .devlog-project-link {
   display: inline-block;
   margin-top: 1rem;
@@ -275,4 +305,108 @@
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ---------- Related posts ---------- */
+.related-posts {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+}
+.related-posts h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+.related-posts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.related-post {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-radius: 10px;
+  text-decoration: none;
+}
+.related-post:hover {
+  border-color: var(--color-link);
+}
+.related-post-title {
+  font-weight: 600;
+}
+.related-post-meta {
+  font-size: 0.8rem;
+  color: var(--color-muted, #6b6b6b);
+}
+
+/* ---------- Table of contents ---------- */
+.post-toc {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-left: 3px solid var(--color-link);
+  background: rgba(128, 128, 128, 0.05);
+  border-radius: 8px;
+}
+.post-toc-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted, #6b6b6b);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.post-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.post-toc li {
+  margin: 0.2rem 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid transparent;
+}
+.post-toc li.post-toc-l3 {
+  padding-left: 1.75rem;
+}
+.post-toc a {
+  color: var(--color-muted, #6b6b6b);
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+.post-toc a.is-active,
+.post-toc a:hover {
+  color: var(--color-link);
+}
+.post-toc li.is-active {
+  border-left-color: var(--color-link);
+}
+
+/* ---------- Share buttons ---------- */
+.devlog-share {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  background: transparent;
+  color: inherit;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.devlog-share:hover,
+.devlog-share.is-copied {
+  border-color: var(--color-link);
+  color: var(--color-link);
+}
+
+/* ---------- Devlog empty state visibility ---------- */
+.devlog-tag,
+.devlog-tech-item {
+  text-decoration: none;
+}
+.devlog-tag:hover,
+.devlog-tech-item:hover {
+  text-decoration: underline;
 }

@@ -1,7 +1,12 @@
+pub mod ai;
+pub mod analytics;
 pub mod build;
 pub mod content;
+pub mod export;
 pub mod git;
 pub mod import;
+pub mod lint;
+pub mod syndication;
 
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
@@ -141,7 +146,31 @@ pub struct Preferences {
     #[serde(default)]
     pub last_opened: Option<String>,
     #[serde(default)]
+    pub devlog_repo: Option<String>,
+    #[serde(default)]
     pub window_state: Option<WindowStatePrefs>,
+    #[serde(default)]
+    pub publish_mode: Option<String>,
+    #[serde(default)]
+    pub settings: Option<SettingsJson>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct SettingsJson {
+    #[serde(default)]
+    pub deploy_hook_url: Option<String>,
+    #[serde(default)]
+    pub syndicate_via: Option<String>,
+    #[serde(default)]
+    pub publish_actions_enabled: bool,
+    #[serde(default)]
+    pub umami_url: Option<String>,
+    #[serde(default)]
+    pub umami_website_id: Option<String>,
+    #[serde(default)]
+    pub giscus_repo_id: Option<String>,
+    #[serde(default)]
+    pub giscus_category_id: Option<String>,
 }
 
 struct AppState {
@@ -404,6 +433,37 @@ fn delete_page(app: tauri::AppHandle, slug: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+fn list_projects(app: tauri::AppHandle) -> Result<Vec<content::ProjectRow>, AppError> {
+    with_repo(&app, None, |repo| content::list_projects(repo))
+}
+
+#[tauri::command]
+fn read_project(
+    app: tauri::AppHandle,
+    slug: String,
+) -> Result<serde_json::Value, AppError> {
+    with_repo(&app, None, |repo| content::read_project(repo, &slug))
+}
+
+#[tauri::command]
+fn create_project(
+    app: tauri::AppHandle,
+    project: content::ProjectInput,
+) -> Result<content::ProjectRow, AppError> {
+    with_repo(&app, None, |repo| content::create_project(repo, &project))
+}
+
+#[tauri::command]
+fn update_project(app: tauri::AppHandle, project: content::ProjectInput) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| content::update_project(repo, &project))
+}
+
+#[tauri::command]
+fn delete_project(app: tauri::AppHandle, slug: String) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| content::delete_project(repo, &slug))
+}
+
+#[tauri::command]
 fn read_post(app: tauri::AppHandle, page_slug: String, post_slug: String) -> Result<serde_json::Value, AppError> {
     with_repo(&app, None, |repo| content::read_post(repo, &page_slug, &post_slug))
 }
@@ -439,6 +499,51 @@ fn import_pdf(app: tauri::AppHandle, source_path: String) -> Result<import::PdfI
 }
 
 #[tauri::command]
+fn import_asset_bytes(
+    app: tauri::AppHandle,
+    page_slug: String,
+    post_slug: String,
+    file_name: String,
+    data: Vec<u8>,
+) -> Result<import::ImportAssetResult, AppError> {
+    with_repo(&app, None, |repo| {
+        import::import_asset_bytes(repo, &page_slug, &post_slug, &file_name, &data)
+    })
+}
+
+#[tauri::command]
+fn capture_screenshot(
+    app: tauri::AppHandle,
+    page_slug: String,
+    post_slug: String,
+) -> Result<import::ImportAssetResult, AppError> {
+    with_repo(&app, None, |repo| {
+        import::capture_screenshot(repo, &page_slug, &post_slug)
+    })
+}
+
+/// Native file picker. Returns an absolute path, or `null` if the user cancels.
+#[tauri::command]
+fn pick_file(
+    app: tauri::AppHandle,
+    filter_name: Option<String>,
+    filter_exts: Option<Vec<String>>,
+) -> Result<Option<String>, AppError> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut builder = app.dialog().file();
+    if let (Some(name), Some(exts)) = (filter_name, filter_exts) {
+        if !exts.is_empty() {
+            let refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+            builder = builder.add_filter(name, &refs);
+        }
+    }
+    let file = builder.blocking_pick_file();
+    Ok(file
+        .and_then(|f| f.into_path().ok())
+        .map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
 fn scan_media(app: tauri::AppHandle) -> Result<Vec<content::MediaFile>, AppError> {
     with_repo(&app, None, |repo| content::scan_media(repo))
 }
@@ -449,8 +554,108 @@ fn delete_media(app: tauri::AppHandle, rel_path: String) -> Result<(), AppError>
 }
 
 #[tauri::command]
-fn build_site(app: tauri::AppHandle) -> Result<build::BuildResult, AppError> {
-    with_repo(&app, None, |repo| build::build_site(repo))
+fn build_site(app: tauri::AppHandle, mode: Option<String>) -> Result<build::BuildResult, AppError> {
+    let state = app.state::<AppState>();
+    let prefs = state.prefs.lock().unwrap();
+    let default_mode = prefs.publish_mode.clone().unwrap_or_else(|| "preview".into());
+    let settings = prefs.settings.clone();
+    drop(prefs);
+    let mode = mode.unwrap_or(default_mode);
+    with_repo(&app, None, |repo| build::build_site(repo, &mode, settings.as_ref()))
+}
+
+#[tauri::command]
+fn latest_site_build(app: tauri::AppHandle) -> Result<content::SiteBuildInfo, AppError> {
+    with_repo(&app, None, |repo| content::site_build_info(repo))
+}
+
+#[tauri::command]
+fn lint_posts(app: tauri::AppHandle) -> Result<lint::LintReport, AppError> {
+    with_repo(&app, None, |repo| lint::lint_posts(repo))
+}
+
+#[tauri::command]
+async fn trigger_deploy_hook(
+    app: tauri::AppHandle,
+    hook_url: Option<String>,
+) -> Result<syndication::DeployHookResult, AppError> {
+    let url = match hook_url {
+        Some(u) if !u.trim().is_empty() => u,
+        _ => app
+            .state::<AppState>()
+            .prefs
+            .lock()
+            .unwrap()
+            .settings
+            .clone()
+            .and_then(|s| s.deploy_hook_url)
+            .ok_or_else(|| AppError::Validation("No deploy hook URL configured.".into()))?,
+    };
+    syndication::trigger_deploy_hook(&url).await
+}
+
+#[tauri::command]
+fn suggest_metadata(body: String, current_title: String) -> Result<ai::AiMetadata, AppError> {
+    ai::suggest_metadata(&body, &current_title)
+}
+
+#[tauri::command]
+fn analytics_summary(app: tauri::AppHandle) -> Result<analytics::AnalyticsSummary, AppError> {
+    let state = app.state::<AppState>();
+    let prefs = state.prefs.lock().unwrap();
+    let settings = prefs.settings.clone().unwrap_or_default();
+    let umami_url = settings.umami_url.unwrap_or_default();
+    let website_id = settings.umami_website_id.unwrap_or_default();
+    Ok(analytics::analytics_config(&umami_url, &website_id))
+}
+
+#[tauri::command]
+async fn track_umami_event(
+    app: tauri::AppHandle,
+    url: String,
+    title: String,
+) -> Result<(), AppError> {
+    let (umami_url, website_id) = {
+        let state = app.state::<AppState>();
+        let prefs = state.prefs.lock().unwrap();
+        let settings = prefs.settings.clone().unwrap_or_default();
+        (
+            settings.umami_url.unwrap_or_default(),
+            settings.umami_website_id.unwrap_or_default(),
+        )
+    };
+    if umami_url.is_empty() || website_id.is_empty() {
+        return Ok(());
+    }
+    let payload = analytics::UmamiPayload {
+        website: website_id,
+        hostname: "local-admin".to_string(),
+        language: String::new(),
+        title,
+        url,
+    };
+    analytics::track_event(&umami_url, &payload, None).await
+}
+
+#[tauri::command]
+fn crosspost_preview(
+    title: String,
+    excerpt: String,
+    url: String,
+    via: String,
+) -> Result<syndication::CrossPostPreview, AppError> {
+    let mut p = syndication::crosspost_preview(&title, &excerpt, &url);
+    p.via = via;
+    Ok(p)
+}
+
+#[tauri::command]
+fn export_post(
+    app: tauri::AppHandle,
+    page_slug: String,
+    post_slug: String,
+) -> Result<export::ExportResult, AppError> {
+    with_repo(&app, None, |repo| export::export_post(repo, &page_slug, &post_slug))
 }
 
 #[tauri::command]
@@ -461,6 +666,20 @@ fn git_status(app: tauri::AppHandle) -> Result<GitStatusSummary, AppError> {
 #[tauri::command]
 fn git_diff_summary(app: tauri::AppHandle, staged: bool) -> Result<Vec<git::DiffFile>, AppError> {
     with_repo(&app, None, |repo| git::git_diff_summary(repo, staged))
+}
+
+#[tauri::command]
+fn git_diff(app: tauri::AppHandle, staged: bool) -> Result<String, AppError> {
+    with_repo(&app, None, |repo| git::git_diff(repo, staged))
+}
+
+#[tauri::command]
+fn git_log(
+    repo_path: String,
+    count: Option<usize>,
+) -> Result<Vec<git::CommitInfo>, AppError> {
+    let path = PathBuf::from(&repo_path);
+    git::git_log(&path, count.unwrap_or(15))
 }
 
 #[tauri::command]
@@ -600,22 +819,40 @@ pub fn run() {
             create_page,
             update_page,
             delete_page,
+            list_projects,
+            read_project,
+            create_project,
+            update_project,
+            delete_project,
             read_post,
             write_post,
             delete_post,
             import_asset,
             import_pdf,
+            import_asset_bytes,
+            capture_screenshot,
+            pick_file,
             scan_media,
             delete_media,
             build_site,
             git_status,
             git_diff_summary,
+            git_diff,
+            git_log,
             git_stage_paths,
             git_commit,
             git_push,
             git_last_commit,
             git_auth_status,
             check_repo,
+            latest_site_build,
+            lint_posts,
+            trigger_deploy_hook,
+            suggest_metadata,
+            analytics_summary,
+            track_umami_event,
+            crosspost_preview,
+            export_post,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

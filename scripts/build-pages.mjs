@@ -148,6 +148,8 @@ function readPostPublic(filePath, pageSlug) {
       tags: Array.isArray(meta.tags) ? meta.tags : [],
       technologies: Array.isArray(meta.technologies) ? meta.technologies : [],
       subtitle: meta.subtitle || '',
+      series: meta.series || '',
+      part: Number.parseInt(meta.part, 10) || 0,
       body,
       pageSlug,
     };
@@ -155,7 +157,7 @@ function readPostPublic(filePath, pageSlug) {
   return raw;
 }
 
-function postPagePublic(post, crumbs, pagesBySlug) {
+function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
   const body = renderMarkdown(post.body.replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '').trim());
   const crumbHtml = crumbs.map((c) => `<span>${escapeHtml(c.name)}</span>`).join(' <span class="crumb-sep">/</span> ');
   const parentCrumb = crumbs.length > 0 ? `<a class="devlog-link" href="../${crumbs[crumbs.length - 1].slug}/index.html">← ${escapeHtml(crumbs[crumbs.length - 1].name)}</a>` : '';
@@ -171,6 +173,7 @@ function postPagePublic(post, crumbs, pagesBySlug) {
         <div class="devlog-tags" style="margin-top:0.75rem;">${post.tags.map((t) => `<span class="devlog-tag">${escapeHtml(t)}</span>`).join('')}</div>
         <div class="devlog-tech" style="margin-top:0.75rem;">${post.technologies.map((t) => `<span class="devlog-tech-item">${escapeHtml(t)}</span>`).join('')}</div>
         ${body}
+        ${seriesNav}
       </div>
     </article>
   `;
@@ -189,8 +192,34 @@ function escapeForRegex(value = '') {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function seriesNavHtml(posts, current) {
+  if (!current.series) return '';
+  const partOf = (p) => (p.part > 0 ? p.part : Number.MAX_SAFE_INTEGER);
+  const chain = posts
+    .filter((p) => p.pageSlug === current.pageSlug && p.series === current.series)
+    .sort(
+      (a, b) =>
+        partOf(a) - partOf(b) ||
+        new Date(a.date || 0) - new Date(b.date || 0),
+    );
+  if (chain.length < 2) return '';
+  const idx = chain.findIndex((p) => p.slug === current.slug);
+  const prev = idx > 0 ? chain[idx - 1] : null;
+  const next = idx >= 0 && idx < chain.length - 1 ? chain[idx + 1] : null;
+  if (!prev && !next) return '';
+  return `
+    <nav class="series-nav" aria-label="Series navigation">
+      <div class="series-nav-label">Part of ${escapeHtml(current.series)}${current.part ? ` · part ${current.part}` : ''}</div>
+      <div class="series-nav-links">
+        ${prev ? `<a class="series-nav-link series-nav-prev" href="${prev.slug}.html">← ${escapeHtml(prev.title)}</a>` : ''}
+        ${next ? `<a class="series-nav-link series-nav-next" href="${next.slug}.html">${escapeHtml(next.title)} →</a>` : ''}
+      </div>
+    </nav>
+  `;
+}
+
 export async function buildPages(opts = {}) {
-  const { log = console } = opts;
+  const { log = console, mode = 'publish' } = opts;
   const hierarchy = await buildPageHierarchy(PAGES_ROOT);
   const { roots, pages, postsByPage } = hierarchy;
 
@@ -215,19 +244,26 @@ export async function buildPages(opts = {}) {
     }
   }
 
+  const gridPosts = mode === 'publish' ? allPosts.filter((p) => p.status === 'published') : allPosts;
   const published = allPosts.filter((p) => p.status === 'published');
+  // In preview mode the landing page still lists every post, but it is tagged
+  // with its status so the filter toolbar can surface drafts.
   for (const page of pages) {
     const crumbs = breadcrumb(pagesBySlug, page.slug);
-    const pagePosts = published.filter((p) => p.pageSlug === page.slug);
+    const pagePosts = gridPosts.filter((p) => p.pageSlug === page.slug);
     const subDir = path.join(OUT_DIR, page.slug);
     await fs.mkdir(subDir, { recursive: true });
     await fs.writeFile(path.join(subDir, 'index.html'), pageLandingPage(page, pagesBySlug, pagePosts), 'utf8');
     for (const post of pagePosts) {
-      await fs.writeFile(path.join(subDir, `${post.slug}.html`), postPagePublic(post, crumbs, pagesBySlug), 'utf8');
+      await fs.writeFile(
+        path.join(subDir, `${post.slug}.html`),
+        postPagePublic(post, crumbs, pagesBySlug, seriesNavHtml(published, post)),
+        'utf8',
+      );
     }
   }
 
-  log.log(`Built ${published.length} pages posts across ${pages.length} pages.`);
+  log.log(`Built ${published.length} pages posts across ${pages.length} pages (mode=${mode}).`);
   return { pages: pages.length, posts: published.length };
 }
 
