@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Devlog</title>
+    <link>https://ahmarius.github.io/devlog.html</link>
+    <description>Project notes and technical writing from Alexandru-Marius Hrițcu.</description>
+    <atom:link href="https://ahmarius.github.io/feed.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>352352</title>
+      <link>https://ahmarius.github.io/devlog/235235.html</link>
+      <guid isPermaLink="false">https://ahmarius.github.io/devlog/235235.html</guid>
+      <pubDate>Thu, 03 Sep 2026 00:00:00 +0000</pubDate>
+      <description>235235</description>
+    </item>
+    <item>
+      <title>tteryert</title>
+      <link>https://ahmarius.github.io/devlog/erter.html</link>
+      <guid isPermaLink="false">https://ahmarius.github.io/devlog/erter.html</guid>
+      <pubDate>Thu, 03 Sep 2026 00:00:00 +0000</pubDate>
+      <description>eterte</description>
+    </item>
+    <item>
+      <title>First Solver</title>
+      <link>https://ahmarius.github.io/devlog/first-solver.html</link>
+      <guid isPermaLink="false">https://ahmarius.github.io/devlog/first-solver.html</guid>
+      <pubDate>Tue, 01 Sep 2026 00:00:00 +0000</pubDate>
+      <description>First Solver This is a test post with inline math and a block:</description>
+    </item>
+  </channel>
+</rss>

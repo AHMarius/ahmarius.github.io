@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Devlog</title>
+  <link href="https://ahmarius.github.io/feed.xml" rel="self" />
+  <id>https://ahmarius.github.io/</id>
+  <entry>
+    <title>352352</title>
+    <link href="https://ahmarius.github.io/devlog/235235.html" />
+    <id>https://ahmarius.github.io/devlog/235235.html</id>
+    <updated>2026-09-03T00:00:00.000Z</updated>
+    <summary>235235</summary>
+  </entry>
+  <entry>
+    <title>tteryert</title>
+    <link href="https://ahmarius.github.io/devlog/erter.html" />
+    <id>https://ahmarius.github.io/devlog/erter.html</id>
+    <updated>2026-09-03T00:00:00.000Z</updated>
+    <summary>eterte</summary>
+  </entry>
+  <entry>
+    <title>First Solver</title>
+    <link href="https://ahmarius.github.io/devlog/first-solver.html" />
+    <id>https://ahmarius.github.io/devlog/first-solver.html</id>
+    <updated>2026-09-01T00:00:00.000Z</updated>
+    <summary>First Solver This is a test post with inline math and a block:</summary>
+  </entry>
+</feed>
