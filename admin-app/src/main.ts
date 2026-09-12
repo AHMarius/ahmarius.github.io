@@ -1565,8 +1565,19 @@ function openPublish() {
     const lastCommit = await cell(() => call("git_last_commit"));
     const diffText = await cell(() => call("git_diff", { staged: false }));
     const buildInfo = await cell(() => call("latest_site_build"));
+    const syncState =
+      st.behind > 0 && st.ahead > 0
+        ? `<p class="error-text">Branch is diverged: <strong>${st.ahead} ahead, ${st.behind} behind</strong> — push will be rejected (non-fast-forward).</p>`
+        : st.behind > 0
+          ? `<p class="error-text">Branch is <strong>${st.behind} behind</strong> remote — push will be rejected.</p>`
+          : "";
+    const pullBtn = syncState
+      ? `<div class="modal-actions"><button id="pub-cancel3" class="btn">Cancel</button><button id="pub-pull" class="btn publish">Pull latest (rebase)</button></div>`
+      : "";
     body.innerHTML = `
       <p>Branch: <strong>${esc(st.branch)}</strong>${st.ahead ? ` (${st.ahead} ahead)` : ""}${st.behind ? ` (${st.behind} behind)` : ""}</p>
+      ${syncState}
+      ${pullBtn}
       ${lastCommit ? `<p class="muted">Last commit: <code>${esc(lastCommit)}</code></p>` : ""}
       ${buildInfo ? `<p class="muted">Last build: ${esc(buildInfo.generated_at || "unknown")} · ${buildInfo.devlog_posts} post pages · ${buildInfo.archive_folders.join(", ")} § feed: ${buildInfo.feed_generated ? "yes" : "no"} · sitemap: ${buildInfo.sitemap_generated ? "yes" : "no"}</p>` : ""}
       <h4>Staged</h4><pre class="diffbox">${staged || "(nothing staged yet)"}</pre>
@@ -1576,6 +1587,35 @@ function openPublish() {
       <label>Commit message<input id="pub-msg" value="Update portfolio content" /></label>
       <p class="muted">Will lint posts, run the publish build, stage content/assets, commit, push, and fire any configured deploy hook.</p>
     `;
+    $("#pub-cancel3", overlay)?.addEventListener("click", () => overlay.remove());
+    $("#pub-pull", overlay)?.addEventListener("click", async () => {
+      const pullBtn2 = $("#pub-pull", overlay)!;
+      pullBtn2.disabled = true;
+      pullBtn2.textContent = "Pulling…";
+      try {
+        const out = await cell(() => call("git_pull", { strategy: "rebase" }));
+        body.innerHTML = `<p class="success-text">Pulled latest changes.</p><pre class="diffbox">${esc(String(out ?? "ok"))}</pre>
+          <div class="modal-actions"><button id="pub-again" class="btn publish">Re-check</button></div>`;
+        $("#pub-again", overlay)!.onclick = () => {
+          overlay.remove();
+          openPublish();
+        };
+      } catch (e) {
+        body.innerHTML = `<p class="error-text">Pull failed.</p><pre class="diffbox">${esc(String((e as any).message ?? e ?? "unknown error"))}</pre><p class="muted">You may have uncommitted work or conflicts. Resolve in a terminal, then retry.</p>`;
+        const retry = el("button", "btn publish", "Retry");
+        retry.onclick = () => {
+          overlay.remove();
+          openPublish();
+        };
+        body.appendChild(retry);
+      }
+      return;
+    });
+    if (syncState) {
+      const go = $("#pub-go", overlay)!;
+      go.disabled = true;
+      go.textContent = "Pull latest first";
+    }
     $("#pub-go", overlay)!.onclick = async () => {
       $("#pub-go", overlay)!.disabled = true;
       body.innerHTML = `<p class="muted">Linting posts…</p>`;
@@ -1643,7 +1683,8 @@ function openPublish() {
         setStatus("Published");
         await refreshTree();
       } catch (e) {
-        body.innerHTML = `<p class="error-text">Something went wrong.</p><pre class="diffbox">${esc(String((e as any).message || e))}</pre>`;
+        const msg = String((e as any).message ?? e ?? "");
+        body.innerHTML = `<p class="error-text">Something went wrong.</p><pre class="diffbox">${esc(msg.trim() ? msg : "An unknown error occurred during publishing.")}</pre>`;
         $("#pub-go", overlay)!.remove();
       }
     };

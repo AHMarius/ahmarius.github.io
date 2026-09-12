@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 const PAGE_FILE: &str = "page.yml";
 const POSTS_DIR: &str = "posts";
 const SUBPAGES_DIR: &str = "subpages";
-const ASSETS_DIR: &str = "assets";
 const PROJECTS_DIR: &str = "content/projects";
 const PROJECT_FILE: &str = "project.yml";
 
@@ -348,7 +347,33 @@ fn atomic_write(path: &Path, content: &str) -> AppResult<()> {
 
 pub fn page_dir_of(repo: &Path, slug: &str) -> AppResult<PathBuf> {
     ensure_safe_slug(slug)?;
-    resolve_in_repo(repo, &format!("content/pages/{}", slug))
+    let top = resolve_in_repo(repo, &format!("content/pages/{}", slug))?;
+    if top.join(PAGE_FILE).exists() || top.join(POSTS_DIR).is_dir() {
+        return Ok(top);
+    }
+    if let Some(sub) = find_subpage_dir(repo, slug)? {
+        return Ok(sub);
+    }
+    Ok(top)
+}
+
+/// Find `content/pages/<parent>/subpages/<slug>` for a page whose slug lives
+/// under a sub-pages tree, returning its directory when present.
+///
+/// Without this, operations keyed on a sub-page's slug (read/update/delete,
+/// post lookup) would resolve to the non-existent top-level
+/// `content/pages/<slug>` and silently no-op.
+fn find_subpage_dir(repo: &Path, slug: &str) -> AppResult<Option<PathBuf>> {
+    let root = resolve_in_repo(repo, "content/pages")?;
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let sub = entry.path().join(SUBPAGES_DIR).join(slug);
+            if sub.is_dir() && (sub.join(PAGE_FILE).exists() || sub.join(POSTS_DIR).is_dir()) {
+                return Ok(Some(sub));
+            }
+        }
+    }
+    Ok(None)
 }
 
 pub fn list_pages(repo: &Path) -> AppResult<Vec<PageRow>> {
@@ -541,9 +566,35 @@ pub fn update_page(repo: &Path, page: &PageInput) -> AppResult<()> {
 pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
     let slug = ensure_safe_slug(slug)?;
     let dir = page_dir_of(repo, &slug)?;
+    let mut entries: Vec<(String, String)> = Vec::new();
+    for post in post_slugs_in(&dir.join(POSTS_DIR)) {
+        entries.push((slug.clone(), post));
+    }
+    if dir.join(SUBPAGES_DIR).is_dir() {
+        if let Ok(subpages) = std::fs::read_dir(dir.join(SUBPAGES_DIR)) {
+            for sub in subpages.flatten() {
+                let sub_dir = sub.path();
+                if sub_dir.is_dir() {
+                    let Some(sub_slug) = sub_dir.file_name().map(|s| s.to_string_lossy().to_string()) else {
+                        continue;
+                    };
+                    remove_staged_page_assets(repo, &sub_slug);
+                    for post in post_slugs_in(&sub_dir.join(POSTS_DIR)) {
+                        entries.push((sub_slug.clone(), post));
+                    }
+                }
+            }
+        }
+    }
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
     }
+    for (page, post) in &entries {
+        remove_staged_post_assets(repo, page, post);
+        let _ = remove_generated(repo, &format!("devlog/{}.html", post));
+    }
+    remove_staged_page_assets(repo, &slug);
+    let _ = remove_generated(repo, &format!("pages/{}", slug));
     Ok(())
 }
 
@@ -752,6 +803,13 @@ pub fn delete_project(repo: &Path, slug: &str) -> AppResult<()> {
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
     }
+    remove_staged_page_assets(repo, &slug);
+    if let Ok(path) = resolve_in_repo(repo, &format!("assets/projects/{}", slug)) {
+        if path.exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+    let _ = remove_generated(repo, &format!("projects/{}", slug));
     Ok(())
 }
 
@@ -760,10 +818,27 @@ pub fn delete_project(repo: &Path, slug: &str) -> AppResult<()> {
 pub fn post_file_of(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<PathBuf> {
     ensure_safe_slug(page_slug)?;
     ensure_safe_slug(post_slug)?;
-    resolve_in_repo(
-        repo,
-        &format!("content/pages/{}/{}/{}.md", page_slug, POSTS_DIR, post_slug),
-    )
+    let page_dir = page_dir_of(repo, page_slug)?;
+    let direct = page_dir
+        .join(POSTS_DIR)
+        .join(format!("{}.md", post_slug));
+    if direct.exists() {
+        return Ok(direct);
+    }
+    if page_dir.join(SUBPAGES_DIR).is_dir() {
+        if let Ok(entries) = std::fs::read_dir(page_dir.join(SUBPAGES_DIR)) {
+            for entry in entries.flatten() {
+                let sub = entry.path();
+                if sub.is_dir() {
+                    let cand = sub.join(POSTS_DIR).join(format!("{}.md", post_slug));
+                    if cand.exists() {
+                        return Ok(cand);
+                    }
+                }
+            }
+        }
+    }
+    Ok(direct)
 }
 
 pub fn list_posts(repo: &Path) -> AppResult<Vec<PostRow>> {
@@ -887,13 +962,65 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
 }
 
 pub fn delete_post(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<()> {
-    let file = post_file_of(repo, page_slug, post_slug)?;
+    let page_slug = ensure_safe_slug(page_slug)?;
+    let post_slug = ensure_safe_slug(post_slug)?;
+    let file = post_file_of(repo, &page_slug, &post_slug)?;
     if file.exists() {
         std::fs::remove_file(&file)?;
     }
-    let assets = file.parent().unwrap_or(&file).join(ASSETS_DIR);
-    if assets.exists() {
-        std::fs::remove_dir_all(&assets)?;
+    let slug_dir = file.with_extension("");
+    let parent = file.parent().map(|p| p.to_path_buf());
+    if slug_dir.is_dir() && parent.as_deref() != Some(slug_dir.as_path()) {
+        std::fs::remove_dir_all(&slug_dir)?;
+    }
+    remove_staged_post_assets(repo, &page_slug, &post_slug);
+    let _ = remove_generated(repo, &format!("devlog/{}.html", post_slug));
+    Ok(())
+}
+
+/// The `.md` slug-folder names directly under a page's `posts` dir.
+fn post_slugs_in(posts_dir: &Path) -> Vec<String> {
+    let mut out = vec![];
+    if let Ok(entries) = std::fs::read_dir(posts_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().map(|e| e == "md").unwrap_or(false) {
+                if let Some(stem) = p.file_stem() {
+                    out.push(stem.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Best-effort removal of the staged (published) asset copy for a post.
+fn remove_staged_post_assets(repo: &Path, page_slug: &str, post_slug: &str) {
+    let rel = format!("assets/posts/{}/{}", page_slug, post_slug);
+    if let Ok(path) = resolve_in_repo(repo, &rel) {
+        if path.exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// Best-effort removal of the staged page cover asset.
+fn remove_staged_page_assets(repo: &Path, page_slug: &str) {
+    let rel = format!("assets/pages/{}", page_slug);
+    if let Ok(path) = resolve_in_repo(repo, &rel) {
+        if path.exists() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// Best-effort removal of a generated site artifact (file or dir) by rel path.
+fn remove_generated(repo: &Path, rel: &str) -> AppResult<()> {
+    let path = resolve_in_repo(repo, rel)?;
+    if path.is_file() {
+        std::fs::remove_file(&path)?;
+    } else if path.is_dir() {
+        std::fs::remove_dir_all(&path)?;
     }
     Ok(())
 }
@@ -1340,6 +1467,101 @@ mod tests {
         assert!(page_dir.join("page.yml").exists());
         let pages = list_pages(&root).unwrap();
         assert!(pages.iter().any(|p| p.slug == "brand-new-page"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_subpage_removes_nested_dir() {
+        let root = repo();
+        create_page(
+            &root,
+            &PageInput {
+                name: "GPU Port".to_string(),
+                slug: "gpu-port".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("fluid-dynamics".to_string()),
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let sub = resolve_in_repo(&root, "content/pages/fluid-dynamics/subpages/gpu-port")
+            .unwrap();
+        assert!(sub.join(PAGE_FILE).exists());
+
+        // Pre-fix code resolved to content/pages/gpu-port (top-level) and would
+        // have silently no-opped; delete must find the nested subpage and remove it.
+        delete_page(&root, "gpu-port").unwrap();
+        assert!(!sub.join(PAGE_FILE).exists());
+        assert!(!sub.exists());
+        // The parent page must survive.
+        assert!(resolve_in_repo(&root, "content/pages/fluid-dynamics/page.yml")
+            .unwrap()
+            .exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn delete_post_cleans_assets_and_staged_copy() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(posts.join("my-post").join("assets")).unwrap();
+        std::fs::write(posts.join("my-post.md"), "# My Post").unwrap();
+        std::fs::write(posts.join("my-post").join("assets").join("pic.png"), b"png").unwrap();
+        // A staged copy at its published location + a generated post page.
+        let staged = resolve_in_repo(&root, "assets/posts/fluid-dynamics/my-post").unwrap();
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("pic.png"), b"png").unwrap();
+        let generated = resolve_in_repo(&root, "devlog/my-post.html").unwrap();
+        std::fs::create_dir_all(generated.parent().unwrap()).unwrap();
+        std::fs::write(&generated, "<html>").unwrap();
+
+        delete_post(&root, "fluid-dynamics", "my-post").unwrap();
+
+        assert!(!posts.join("my-post.md").exists());
+        // The <slug> assets folder next to the .md must be gone too (the old
+        // code looked at posts/assets, leaving orphaned content).
+        assert!(!posts.join("my-post").exists());
+        assert!(!staged.exists());
+        assert!(!generated.exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn subpage_post_paths_are_found() {
+        let root = repo();
+        create_page(
+            &root,
+            &PageInput {
+                name: "GPU Port".to_string(),
+                slug: "gpu-port".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("fluid-dynamics".to_string()),
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let sub_posts = resolve_in_repo(
+            &root,
+            "content/pages/fluid-dynamics/subpages/gpu-port/posts",
+        )
+        .unwrap();
+        std::fs::create_dir_all(&sub_posts).unwrap();
+        std::fs::write(sub_posts.join("deep.md"), "# Deep").unwrap();
+
+        let file = post_file_of(&root, "gpu-port", "deep").unwrap();
+        assert_eq!(
+            std::fs::canonicalize(&file).unwrap(),
+            std::fs::canonicalize(sub_posts.join("deep.md")).unwrap()
+        );
+        // Deleting a subpage post must reach it (and not error).
+        delete_post(&root, "gpu-port", "deep").unwrap();
+        assert!(!sub_posts.join("deep.md").exists());
         std::fs::remove_dir_all(&root).ok();
     }
 }

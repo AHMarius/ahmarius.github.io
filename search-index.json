@@ -1,50 +1,20 @@
+---
+layout: null
+permalink: /search-index.json
+---
 [
+{% for post in site.posts %}
   {
-    "slug": "235235",
-    "title": "352352",
-    "excerpt": "235235",
-    "tags": [
-      "43r"
-    ],
-    "technologies": [
-      "534"
-    ],
-    "project": "23423",
-    "page": "525235",
-    "date": "2026-09-03",
-    "updatedDate": "2026-09-03",
-    "url": "/devlog/235235.html"
-  },
-  {
-    "slug": "erter",
-    "title": "tteryert",
-    "excerpt": "eterte",
-    "tags": [
-      "erter"
-    ],
-    "technologies": [
-      "ert"
-    ],
-    "project": "Testing 2222",
-    "page": "ertert",
-    "date": "2026-09-03",
-    "updatedDate": "2026-09-03",
-    "url": "/devlog/erter.html"
-  },
-  {
-    "slug": "first-solver",
-    "title": "First Solver",
-    "excerpt": "First Solver This is a test post with inline math and a block:",
-    "tags": [
-      "Simulation"
-    ],
-    "technologies": [
-      "C++"
-    ],
-    "project": "",
-    "page": "fluid-dynamics",
-    "date": "2026-09-01",
-    "updatedDate": "2026-09-01",
-    "url": "/devlog/first-solver.html"
-  }
+    "slug": {{ post.slug | jsonify }},
+    "title": {{ post.title | jsonify }},
+    "excerpt": {{ post.excerpt | strip_html | jsonify }},
+    "tags": {{ post.tags | jsonify }},
+    "technologies": {{ post.technologies | jsonify }},
+    "project": {{ post.project | jsonify }},
+    "page": {{ post.page | jsonify }},
+    "date": {{ post.date | date: "%Y-%m-%d" | jsonify }},
+    "updatedDate": {{ post.updatedDate | default: post.date | date: "%Y-%m-%d" | jsonify }},
+    "url": {{ post.url | jsonify }}
+  }{% unless forloop.last %},{% endunless %}
+{% endfor %}
 ]
