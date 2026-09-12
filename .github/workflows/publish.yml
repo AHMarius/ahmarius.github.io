@@ -1,13 +1,17 @@
-name: Build & publish site (incl. scheduled)
+name: Build & publish site
 
 on:
-  push:
-    branches: [main, master]
+  # Manual only — no automatic build on commits.
   schedule:
-    # Rebuild a few times a day so scheduled posts (publish_at) appear even
-    # when the editor is offline; the deploy job is skipped when nothing changed.
+    # Rebuild a few times a day so future-dated posts (front-matter `date`)
+    # appear automatically even when the editor is offline.
     - cron: '0 6,12,18,0 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: pages
@@ -16,48 +20,37 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Build site (publish mode, filters drafts + scheduled posts)
-        run: npm run build -- --mode publish
-      - name: Commit rebuild artifacts (scheduled builds only)
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A devlog pages feed.xml atom.xml sitemap.xml robots.txt search-index.json devlog.html pages.html assets/og
-          if git diff --cached --quiet; then
-            echo "No content changes; nothing to commit."
-          else
-            git commit -m "chore: scheduled site rebuild"
-            git push
-          fi
-      - name: Upload Pages artifact
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        run: bundle exec jekyll build
+        env:
+          JEKYLL_ENV: production
+          PAGES_REPO_NWO: ${{ github.repository }}
+
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # The site publishes from the `main` branch by default; this job only adds
-    # Actions-based deployment when Pages > Source is set to "GitHub Actions".
-    continue-on-error: true
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4

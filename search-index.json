@@ -1,1 +1,20 @@
-[]
+---
+layout: null
+permalink: /search-index.json
+---
+[
+{% for post in site.posts %}
+  {
+    "slug": {{ post.slug | jsonify }},
+    "title": {{ post.title | jsonify }},
+    "excerpt": {{ post.excerpt | strip_html | jsonify }},
+    "tags": {{ post.tags | jsonify }},
+    "technologies": {{ post.technologies | jsonify }},
+    "project": {{ post.project | jsonify }},
+    "page": {{ post.page | jsonify }},
+    "date": {{ post.date | date: "%Y-%m-%d" | jsonify }},
+    "updatedDate": {{ post.updatedDate | default: post.date | date: "%Y-%m-%d" | jsonify }},
+    "url": {{ post.url | jsonify }}
+  }{% unless forloop.last %},{% endunless %}
+{% endfor %}
+]

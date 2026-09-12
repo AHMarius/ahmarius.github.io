@@ -1,0 +1,21 @@
+---
+layout: base
+suffix: Devlog
+section: devlog
+katex: true
+og_article: true
+css_extra: assets/css/pages.css,assets/css/print.css
+js_extra: assets/js/post.js
+---
+{% assign read_time = page.content | number_of_words | divided_by: 180 | plus: 1 %}
+<article class="devlog-post" id="main-content">
+  <div class="devlog-article">
+    <a class="devlog-link" href="/devlog.html">← All posts</a>
+    <div class="devlog-meta">{{ page.date | date: "%Y-%m-%d" }} • {{ read_time }} min read</div>
+    <h1>{{ page.title }}</h1>
+    {% if page.tags.size > 0 %}<div class="devlog-tags">{% for t in page.tags %}<a class="devlog-tag" href="/devlog/archives.html#{{ t | slugify }}">{{ t }}</a>{% endfor %}</div>{% endif %}
+    {% if page.technologies.size > 0 %}<div class="devlog-tech" style="margin-top:0.75rem;">{% for t in page.technologies %}<a class="devlog-tech-item" href="/devlog/archives.html#{{ t | slugify }}">{{ t }}</a>{% endfor %}</div>{% endif %}
+    {{ content }}
+    {% if page.series %}{% include series_nav.html %}{% endif %}
+  </div>
+</article>

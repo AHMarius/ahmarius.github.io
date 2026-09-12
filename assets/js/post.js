@@ -1,4 +1,24 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // Build the on-page table of contents (>=3 headings) client-side so the
+  // site builds as plain Jekyll with no custom plugins (GitHub Pages-safe).
+  const article = document.querySelector(".devlog-article, .page-body");
+  if (article) {
+    const headings = [...article.querySelectorAll("h2, h3")];
+    if (headings.length >= 3) {
+      const items = headings
+        .map((heading) => {
+          const level = heading.tagName === "H3" ? 3 : 2;
+          return `<li class="post-toc-l${level}"><a href="#${heading.id}">${heading.textContent.trim()}</a></li>`;
+        })
+        .join("\n");
+      const nav = document.createElement("nav");
+      nav.className = "post-toc";
+      nav.setAttribute("aria-label", "Table of contents");
+      nav.innerHTML = `<span class="post-toc-title">On this page</span>\n<ul>${items}</ul>`;
+      article.prepend(nav);
+    }
+  }
+
   // Share buttons use the Web Share API when available, falling back to a
   // clipboard copy with a transient acknowledgement.
   document.querySelectorAll(".devlog-share").forEach((button) => {

@@ -1,0 +1,19 @@
+{% assign chain = site.posts | where: "series", page.series | sort: "part" %}
+{% assign count = chain.size %}
+{% if count > 1 %}
+  {% assign idx = -1 %}
+  {% for p in chain %}{% if p.url == page.url %}{% assign idx = forloop.index0 %}{% endif %}{% endfor %}
+  {% if idx >= 0 %}
+    {% if idx > 0 %}{% assign prev = chain[idx | minus: 1] %}{% endif %}
+    {% if idx < count | minus: 1 %}{% assign next = chain[idx | plus: 1] %}{% endif %}
+    {% if prev or next %}
+    <nav class="series-nav" aria-label="Series navigation">
+      <div class="series-nav-label">Part of {{ page.series }}{% if page.part and page.part != "" %} · part {{ page.part }}{% endif %}</div>
+      <div class="series-nav-links">
+        {% if prev %}<a class="series-nav-link series-nav-prev" href="{{ prev.url }}">← {{ prev.title }}</a>{% endif %}
+        {% if next %}<a class="series-nav-link series-nav-next" href="{{ next.url }}">{{ next.title }} →</a>{% endif %}
+      </div>
+    </nav>
+    {% endif %}
+  {% endif %}
+{% endif %}

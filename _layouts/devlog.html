@@ -1,0 +1,71 @@
+---
+layout: base
+section: devlog
+css_extra: assets/css/pages.css
+js_extra: assets/js/devlog.js
+---
+{% assign tags = site.posts | map: "tags" | join: "," | split: "," | uniq | sort %}
+{% assign techs = site.posts | map: "technologies" | join: "," | split: "," | uniq | sort %}
+{% assign projects = site.posts | map: "project" | compact | uniq | sort %}
+<header class="page-header devlog-header">
+  <p class="section-eyebrow">Project notes</p>
+  <h1>Devlog</h1>
+</header>
+<main id="main-content" class="devlog-shell">
+  <section class="devlog-toolbar" aria-label="Devlog filters">
+    <div class="devlog-filter">
+      <label for="devlog-search">Search</label>
+      <input id="devlog-search" type="search" placeholder="Search posts..." />
+    </div>
+    <div class="devlog-filter">
+      <label for="devlog-tag">Tag</label>
+      <select id="devlog-tag">
+        <option value="all">All tags</option>
+        {% for t in tags %}<option value="{{ t | escape }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="devlog-filter">
+      <label for="devlog-tech">Technology</label>
+      <select id="devlog-tech">
+        <option value="all">All technologies</option>
+        {% for t in techs %}<option value="{{ t | escape }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="devlog-filter">
+      <label for="devlog-project">Project</label>
+      <select id="devlog-project">
+        <option value="all">All projects</option>
+        {% for p in projects %}<option value="{{ p | escape }}">{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="devlog-filter">
+      <label for="devlog-status">Status</label>
+      <select id="devlog-status">
+        <option value="all">All</option>
+        <option value="published">Published</option>
+      </select>
+    </div>
+  </section>
+  <div class="devlog-grid">
+    {% for post in site.posts %}
+      {% assign page_meta = site.hubs | where: "slug", post.page | first %}
+      <article class="devlog-card" data-search="{{ post.title }} {{ post.excerpt | strip_html }} {{ page_meta.name | default: post.page }} {{ post.tags | join: ' ' }} {{ post.technologies | join: ' ' }}" data-tags="{{ post.tags | join: ' ' }}" data-technologies="{{ post.technologies | join: ' ' }}" data-project="{{ post.project }}" data-status="{{ post.status | default: 'published' }}">
+        <div class="devlog-card-header">
+          <h3 class="devlog-card-title">{{ post.title | escape }}</h3>
+          <span class="devlog-meta">{{ post.date | date: "%Y-%m-%d" }}</span>
+        </div>
+        <p>{{ post.excerpt | strip_html }}</p>
+        {% if post.tags.size > 0 %}<div class="devlog-tags">{% for t in post.tags %}<a class="devlog-tag" href="/devlog/archives.html#{{ t | slugify }}">{{ t | escape }}</a>{% endfor %}</div>{% endif %}
+        {% if post.technologies.size > 0 %}<div class="devlog-tech">{% for t in post.technologies %}<a class="devlog-tech-item" href="/devlog/archives.html#{{ t | slugify }}">{{ t | escape }}</a>{% endfor %}</div>{% endif %}
+        <div class="devlog-links">
+          <span class="devlog-meta">{{ post.content | number_of_words | divided_by: 180 | plus: 1 }} min read</span>
+          {% if post.project and post.project != "" %}<a class="devlog-meta" href="/devlog/archives.html#{{ post.project | slugify }}">{{ post.project | escape }}</a>{% endif %}
+          {% if page_meta %}<span class="devlog-meta devlog-page">{{ page_meta.name | escape }}</span>{% endif %}
+          <a class="devlog-link" href="{{ post.url }}">Read article</a>
+          <button type="button" class="devlog-share" data-url="{{ post.url }}" aria-label="Share this post">Share</button>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+  <div id="devlog-empty" class="devlog-empty">No posts match the current filters.</div>
+</main>

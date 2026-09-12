@@ -1,0 +1,47 @@
+---
+layout: base
+katex: true
+og_article: true
+css_extra: assets/css/pages.css
+js_extra: assets/js/post.js
+---
+{% assign posts = site.posts | where: "project", page.slug %}
+<article class="devlog-post" id="main-content">
+  <div class="devlog-article page-body">
+    <header class="page-header devlog-header">
+      <p class="section-eyebrow">Project</p>
+      <h1>{{ page.name | escape }}</h1>
+      {% if page.description %}<p class="section-intro">{{ page.description | escape }}</p>{% endif %}
+      {% if page.cover %}<img class="page-hero-cover" src="{{ page.cover }}" alt="" />{% endif %}
+      <div class="devlog-meta" style="margin-top:0.75rem">
+        {% if page.repo_url %}<a href="{{ page.repo_url }}" target="_blank" rel="noopener">repo ↗</a> {% endif %}
+        {% if page.live_url %}<a href="{{ page.live_url }}" target="_blank" rel="noopener">live ↗</a>{% endif %}
+      </div>
+      <span class="devlog-meta" style="margin-top:0.75rem;display:inline-block">{{ page.status | default: 'active' }} • {{ posts.size }} post{% unless posts.size == 1 %}s{% endunless %}</span>
+    </header>
+    <main id="main-content" class="devlog-shell">
+      {{ content }}
+      {% if posts.size > 0 %}
+        <h2>Devlog entries</h2>
+        <div class="devlog-grid">
+          {% for post in posts %}
+            <article class="devlog-card" data-search="{{ post.title }} {{ post.excerpt | strip_html }} {{ post.tags | join: ' ' }}">
+              <div class="devlog-card-header">
+                <h3 class="devlog-card-title">{{ post.title | escape }}</h3>
+                <span class="devlog-meta">{{ post.date | date: "%Y-%m-%d" }}</span>
+              </div>
+              <p>{{ post.excerpt | strip_html }}</p>
+              {% if post.tags.size > 0 %}<div class="devlog-tags">{% for t in post.tags %}<span class="devlog-tag">{{ t | escape }}</span>{% endfor %}</div>{% endif %}
+              <div class="devlog-links">
+                <span class="devlog-meta">{{ post.content | number_of_words | divided_by: 180 | plus: 1 }} min read</span>
+                <a class="devlog-link" href="{{ post.url }}">Read post</a>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="devlog-empty is-visible">No posts yet.</div>
+      {% endif %}
+    </main>
+  </div>
+</article>
