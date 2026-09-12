@@ -14,6 +14,79 @@ pub struct ImportAssetResult {
     pub warning: Option<String>,
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub struct CoverResult {
+    /// Repo-relative path where the image was written.
+    pub rel_path: String,
+    /// Root-relative path to reference from content, so it resolves in the
+    /// published site (for posts this points into the staged assets tree).
+    pub public_path: String,
+}
+
+const COVER_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"];
+
+/// Copy a picked image into the repo as `cover.<ext>` for a project, page or
+/// post. `kind` is "project" | "page" | "post"; the extra slugs select the
+/// target directory (project/page/post slug respectively).
+pub fn import_cover(
+    repo: &Path,
+    kind: &str,
+    page_slug: &str,
+    post_slug: &str,
+    source_path: &str,
+) -> AppResult<CoverResult> {
+    let source = PathBuf::from(source_path);
+    if !source.is_file() {
+        return Err(AppError::Validation(format!(
+            "Source file not found: {}",
+            source_path
+        )));
+    }
+    let ext = source
+        .extension()
+        .map(|e| {
+            let e = e.to_string_lossy().to_lowercase();
+            if e == "jpeg" { "jpg".to_string() } else { e }
+        })
+        .unwrap_or_default();
+    if !COVER_EXTS.contains(&ext.as_str()) {
+        return Err(AppError::Validation(format!(
+            "Not an image file: {} (expected one of {})",
+            ext,
+            COVER_EXTS.join(", ")
+        )));
+    }
+
+    let file_name = format!("cover.{}", ext);
+    let bytes = std::fs::read(&source)?;
+    let (target_rel, public_path) = if kind == "post" {
+        let page = ensure_safe_slug(page_slug)?;
+        let post = ensure_safe_slug(post_slug)?;
+        let target_rel = format!("content/pages/{}/posts/{}/assets/{}", page, post, file_name);
+        let public_path = format!("assets/posts/{}/{}/{}", page, post, file_name);
+        (target_rel, public_path)
+    } else {
+        let slug = ensure_safe_slug(if kind == "page" { page_slug } else { post_slug })?;
+        let target_rel = if kind == "page" {
+            format!("assets/pages/{}/{}", slug, file_name)
+        } else {
+            format!("content/projects/{}/{}", slug, file_name)
+        };
+        (target_rel.clone(), target_rel)
+    };
+
+    let target = resolve_in_repo(repo, &target_rel)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&target, &bytes)?;
+
+    Ok(CoverResult {
+        rel_path: target_rel,
+        public_path,
+    })
+}
+
 fn sanitize_filename(name: &str) -> String {
     let mut out = String::new();
     let mut prev_dash = false;
@@ -276,6 +349,30 @@ mod tests {
         assert_eq!(sanitize_filename("Diagram.svg"), "diagram.svg");
         assert_eq!(sanitize_filename("!!!"), "asset");
         assert_eq!(sanitize_filename("already_safe.jpg"), "already_safe.jpg");
+    }
+
+    #[test]
+    fn import_cover_kinds() {
+        let root = fresh_repo();
+        let src = root.join("photo.jpeg");
+        std::fs::write(&src, "fake jpeg").unwrap();
+
+        let project = import_cover(&root, "project", "", "bike", src.to_str().unwrap()).unwrap();
+        assert_eq!(project.rel_path, "content/projects/bike/cover.jpg");
+        assert_eq!(project.public_path, project.rel_path);
+        assert!(root.join("content/projects/bike/cover.jpg").is_file());
+
+        let page = import_cover(&root, "page", "software", "", src.to_str().unwrap()).unwrap();
+        assert_eq!(page.rel_path, "assets/pages/software/cover.jpg");
+        assert!(root.join("assets/pages/software/cover.jpg").is_file());
+
+        let post = import_cover(&root, "post", "software", "gpu-port", src.to_str().unwrap()).unwrap();
+        assert_eq!(post.rel_path, "content/pages/software/posts/gpu-port/assets/cover.jpg");
+        assert_eq!(post.public_path, "assets/posts/software/gpu-port/cover.jpg");
+        assert!(root.join("content/pages/software/posts/gpu-port/assets/cover.jpg").is_file());
+
+        assert!(import_cover(&root, "post", "software", "gpu-port", "nope.txt").is_err());
+        std::fs::remove_dir_all(&root).ok();
     }
 
     fn fresh_repo() -> std::path::PathBuf {

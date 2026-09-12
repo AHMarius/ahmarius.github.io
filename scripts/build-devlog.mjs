@@ -2,7 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { PAGES_ROOT } from './content/paths.mjs';
 import { buildPageHierarchy } from './content/pages.mjs';
-import { renderMarkdown, truncateText, buildReadTime, headingsFromMarkdown } from './content/markdown.mjs';
+import { renderMarkdown, truncateText, buildReadTime, headingsFromMarkdown, rewriteAssetUrls } from './content/markdown.mjs';
+import { postAssetsBase, copyAllPostAssets, removePostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute, depthPrefix } from './content/templates.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
 import {
@@ -317,7 +318,7 @@ export function postPage(post, seriesNav = '', related = []) {
     .replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '')
     .trim();
   const headings = headingsFromMarkdown(normalizedBody);
-  const bodyRaw = renderMarkdown(normalizedBody);
+  const bodyRaw = rewriteAssetUrls(renderMarkdown(normalizedBody), postAssetsBase(post.page, post.slug));
   const { html: body, toc } = addToc(bodyRaw, headings);
   const backHref = depthPrefix(1, 'devlog.html');
   const tagLinks = (post.tags || []).map((tag) => `<a class="devlog-tag" href="tag/${archiveSlug(tag)}.html">${escapeHtml(tag)}</a>`).join('');
@@ -439,6 +440,9 @@ export async function buildDevlog(opts = {}) {
 
   // Individual post pages: in preview mode every visible post gets a page so
   // drafts can be inspected; in publish mode only published posts exist here.
+  // Post-local assets are copied to a published, stable URL under assets/posts/.
+  await removePostAssets();
+  await copyAllPostAssets(gridPosts);
   for (const post of gridPosts) {
     const related = relatedPosts(post, published, 3);
     await fs.writeFile(

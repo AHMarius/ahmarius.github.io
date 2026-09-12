@@ -1,8 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { PAGES_ROOT } from './content/paths.mjs';
+import { PAGES_ROOT, sanitizeCover } from './content/paths.mjs';
 import { buildPageHierarchy } from './content/pages.mjs';
-import { renderMarkdown, truncateText, buildReadTime } from './content/markdown.mjs';
+import { renderMarkdown, truncateText, buildReadTime, rewriteAssetUrls } from './content/markdown.mjs';
+import { postAssetsBase, copyAllPostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute } from './content/templates.mjs';
 import { computePageUpdatedDate } from './content/metadata.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
@@ -15,12 +16,17 @@ function relFromPage(depth) {
   return depth > 0 ? '../'.repeat(depth) : '';
 }
 
-export function pageCard(page, href, coverRoot = '') {
+/** Depth of the page that will render the card (0 for the root pages.html). */
+function pageCard(page, href, fromDepth = 0) {
   const childCount = (page.children || []).length;
+  const cover = sanitizeCover(page.cover);
+  const coverImg = cover
+    ? `<img class="page-card-cover" src="${relFromPage(fromDepth)}${escapeAttribute(cover)}" alt="" loading="lazy" />`
+    : '<div class="page-card-cover page-card-cover-empty"></div>';
   return `
     <article class="page-card" data-search="${escapeAttribute(`${page.name} ${page.description}`)}">
       <div class="page-card-header">
-        ${page.cover ? `<img class="page-card-cover" src="${coverRoot}${escapeAttribute(page.cover)}" alt="" loading="lazy" />` : '<div class="page-card-cover page-card-cover-empty"></div>'}
+        ${coverImg}
         <h3 class="page-card-title">${escapeHtml(page.name)}</h3>
       </div>
       <p>${escapeHtml(page.description)}</p>
@@ -48,7 +54,7 @@ function breadcrumb(pagesBySlug, slug) {
 function pageIndexPage(hierarchy) {
   const publishedCounts = publishedCountsByDir(hierarchy.postsByPage);
   const cards = hierarchy.roots
-    .map((page) => pageCard({ ...page, postCount: publishedCounts.get(page.dir) || 0 }, `${page.slug}/index.html`, `${page.slug}/`))
+    .map((page) => pageCard({ ...page, postCount: publishedCounts.get(page.dir) || 0 }, `${page.slug}/index.html`, 0))
     .join('\n');
   const content = `
     <header class="page-header devlog-header">
@@ -73,10 +79,13 @@ function pageIndexPage(hierarchy) {
 function pageLandingPage(page, pagesBySlug, posts) {
   const crumbs = breadcrumb(pagesBySlug, page.slug);
   const crumbHtml = crumbs.map((c) => `<span>${escapeHtml(c.name)}</span>`).join(' <span class="crumb-sep">/</span> ');
+  // Every page (incl. sub-pages) renders into a flat pages/<slug>/ folder at
+  // depth 1; the grandchild landing page links use the parent landing's depth.
+  const depth = 1;
 
   const childCards = (page.children || []).map((child) => {
     const childPosts = postsForPage(posts, child.slug);
-    return pageCard({ ...child, postCount: childPosts.length }, `../${child.slug}/index.html`, `../${child.slug}/`);
+    return pageCard({ ...child, postCount: childPosts.length }, `../${child.slug}/index.html`, depth);
   }).join('\n');
 
   const postCards = posts.map((post) => {
@@ -97,13 +106,17 @@ function pageLandingPage(page, pagesBySlug, posts) {
     `;
   }).join('\n');
 
-  const relativeRoot = relFromPage(1);
+  const relativeRoot = relFromPage(depth);
+  const cover = sanitizeCover(page.cover);
+  const heroCover = cover
+    ? `<img class="page-hero-cover" src="${relativeRoot}${escapeAttribute(cover)}" alt="" />`
+    : '';
   const content = `
     <header class="page-header page-landing-header">
       <nav class="page-breadcrumb" aria-label="Breadcrumb">${crumbHtml}</nav>
       <h1>${escapeHtml(page.name)}</h1>
       ${page.description ? `<p class="section-intro">${escapeHtml(page.description)}</p>` : ''}
-      ${page.cover ? `<img class="page-hero-cover" src="${relativeRoot}${escapeAttribute(page.cover)}" alt="" />` : ''}
+      ${heroCover}
     </header>
     <main id="main-content" class="devlog-shell">
       ${childCards ? `<section><h2>Sub-pages</h2><div class="pages-grid">${childCards}</div></section>` : ''}
@@ -158,7 +171,10 @@ function readPostPublic(filePath, pageSlug) {
 }
 
 function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
-  const body = renderMarkdown(post.body.replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '').trim());
+  const bodyRaw = renderMarkdown(
+    post.body.replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '').trim(),
+  );
+  const body = rewriteAssetUrls(bodyRaw, postAssetsBase(post.pageSlug, post.slug));
   const crumbHtml = crumbs.map((c) => `<span>${escapeHtml(c.name)}</span>`).join(' <span class="crumb-sep">/</span> ');
   const parentCrumb = crumbs.length > 0 ? `<a class="devlog-link" href="../${crumbs[crumbs.length - 1].slug}/index.html">← ${escapeHtml(crumbs[crumbs.length - 1].name)}</a>` : '';
 
@@ -228,6 +244,28 @@ export async function buildPages(opts = {}) {
 
   const pagesBySlug = new Map(pages.map((p) => [p.slug, p]));
 
+  // Page covers are rendered as root-relative URLs; bare filenames are treated
+  // as files living in the page's content directory and are copied into a
+  // published, stable location under assets/pages/<page>/.
+  for (const page of pages) {
+    const cover = sanitizeCover(page.cover);
+    page.cover = cover;
+    if (cover && !cover.includes('/')) {
+      const src = path.join(page.dir, cover);
+      try {
+        const stat = await fs.stat(src);
+        if (stat.isFile()) {
+          const dstDir = path.join(ROOT, 'assets', 'pages', page.slug);
+          await fs.mkdir(dstDir, { recursive: true });
+          await fs.copyFile(src, path.join(dstDir, cover));
+          page.cover = `assets/pages/${page.slug}/${cover}`;
+        }
+      } catch {
+        // keep the (possibly broken) relative reference as-is
+      }
+    }
+  }
+
   const allPosts = [];
   for (const page of pages) {
     let subEntries = [];
@@ -246,6 +284,9 @@ export async function buildPages(opts = {}) {
 
   const gridPosts = mode === 'publish' ? allPosts.filter((p) => p.status === 'published') : allPosts;
   const published = allPosts.filter((p) => p.status === 'published');
+  // Post-local assets live under the same URL whether the post renders on the
+  // devlog or on its page hub; copying is idempotent and safe on its own.
+  await copyAllPostAssets(allPosts);
   // In preview mode the landing page still lists every post, but it is tagged
   // with its status so the filter toolbar can surface drafts.
   for (const page of pages) {

@@ -1,5 +1,6 @@
 import { ContentNode, PostDoc } from "./api";
 import { Editor } from "./editor";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import "./app.css";
 
 type View =
@@ -74,6 +75,104 @@ const cell = (fn: () => Promise<any>) => fn().catch((e) => {
   return null;
 });
 
+// ---------- GitHub web sign-in (device flow via `gh auth login --web`) ----------
+let ghListeners: UnlistenFn[] = [];
+let ghOnDone: (() => void) | null = null;
+
+function stopGhListeners() {
+  ghListeners.forEach((off) => {
+    try {
+      off();
+    } catch {
+      /* already released */
+    }
+  });
+  ghListeners = [];
+}
+
+/** Ensure the `gh auth` credential helper is registered for HTTPS remotes. */
+async function setupGitHub() {
+  return await cell(() => call("github_auth_setup"));
+}
+
+/**
+ * Render the interactive sign-in widget into `host`. Streams the one-time
+ * device code + URL emitted by the backend and calls `onDone` after success.
+ */
+async function renderSignIn(host: HTMLElement, onDone: () => void) {
+  stopGhListeners();
+  ghOnDone = onDone;
+  host.className = "auth-status loading";
+  host.innerHTML = `<p class="muted">Starting GitHub sign-in… keep this window open.</p>`;
+  try {
+    await call("github_login");
+  } catch (e) {
+    host.className = "auth-status error";
+    host.innerHTML = `<p class="error-text">Could not start GitHub sign-in: ${esc(String((e as any).message || e))}</p>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="gh-login">
+      <p class="auth-desc muted">Complete the sign-in in the browser window that opens:</p>
+      <div class="gh-code muted">Waiting for one-time code…</div>
+      <p class="gh-url"><a href="https://github.com/login/device" target="_blank" rel="noopener">https://github.com/login/device</a></p>
+      <p class="muted gh-hint">Waiting for authentication…</p>
+    </div>
+  `;
+  const codeBox = host.querySelector<HTMLElement>(".gh-code")!;
+  const link = host.querySelector<HTMLAnchorElement>(".gh-url a")!;
+  const hint = host.querySelector<HTMLElement>(".gh-hint")!;
+
+  ghListeners.push(
+    await listen("github-login-code", (e: any) => {
+      const p = e.payload || {};
+      if (p.code) {
+        codeBox.textContent = p.code;
+        codeBox.classList.add("gh-code-ready");
+        codeBox.classList.remove("muted");
+        if (hint) hint.textContent = "Enter this code on the GitHub page (it may already be filled in).";
+      }
+      if (p.url && link) {
+        link.href = p.url;
+        link.textContent = p.url;
+      }
+    }),
+  );
+  ghListeners.push(
+    await listen("github-login-url", (e: any) => {
+      const url = e?.payload?.url;
+      if (url && link) {
+        link.href = url;
+        link.textContent = url;
+      }
+    }),
+  );
+  ghListeners.push(
+    await listen("github-login-done", async (e: any) => {
+      const p = e.payload || {};
+      if (p.ok) {
+        host.className = "auth-status ok";
+        host.innerHTML = `<p class="success-text">Signed in to GitHub as <strong>${esc(p.login || "you")}</strong> ✓</p>`;
+        await setupGitHub();
+        const done = ghOnDone;
+        stopGhListeners();
+        done?.();
+      } else {
+        host.className = "auth-status error";
+        host.innerHTML = `<p class="error-text">GitHub sign-in was cancelled or failed. Try again.</p>`;
+        stopGhListeners();
+      }
+    }),
+  );
+  ghListeners.push(
+    await listen("github-login-error", (e: any) => {
+      host.className = "auth-status error";
+      host.innerHTML = `<p class="error-text">${esc(String(e?.payload || "GitHub sign-in error"))}</p>`;
+      stopGhListeners();
+    }),
+  );
+}
+
 // ---------- Autosave + crash recovery ----------
 let newPostSessionId = "";
 let pendingClearKeys: string[] = [];
@@ -143,6 +242,15 @@ async function boot() {
   }
   applyThemeToggle(document.documentElement.dataset.theme || "dark");
   await refreshTree();
+  // Best-effort auto-connect: register the gh credential helper so future
+  // `git push` over HTTPS picks up the stored GitHub token.
+  (async () => {
+    try {
+      await call("github_auth_setup");
+    } catch {
+      /* gh not installed / not authed; the Settings panel offers sign-in */
+    }
+  })();
 }
 
 async function refreshTree() {
@@ -294,6 +402,72 @@ function statusPill(status: string) {
     : "";
 }
 
+// ---------- Cover picker (projects / pages / posts) ----------
+
+function coverRepoRel(raw: string): string {
+  // Posts store the published URL (assets/posts/<page>/<slug>/cover.png) but
+  // the file itself lives in the post assets dir inside content/.
+  const m = raw.match(/^assets\/posts\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  if (m) return `content/pages/${m[1]}/posts/${m[2]}/assets/${m[3]}`;
+  return raw;
+}
+
+async function showCoverPreview(input: HTMLInputElement, preview: HTMLImageElement) {
+  const val = (input.value || "").trim();
+  if (!val) {
+    preview.hidden = true;
+    return;
+  }
+  try {
+    const src = await cell(() => call("read_repo_file", { relPath: coverRepoRel(val) }));
+    if (!src) {
+      preview.hidden = true;
+      return;
+    }
+    preview.src = String(src);
+    preview.hidden = false;
+  } catch {
+    preview.hidden = true;
+  }
+}
+
+function wireCoverField(
+  scope: HTMLElement,
+  inputId: string,
+  previewId: string,
+  resolveTarget: () => { page: string; slug: string },
+) {
+  const input = $("#" + inputId, scope) as HTMLInputElement;
+  const preview = $("#" + previewId, scope) as HTMLImageElement;
+  input.addEventListener("input", () => void showCoverPreview(input, preview));
+  scope.querySelectorAll("[data-pick-cover]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const picked = await cell(() =>
+        call("pick_file", {
+          filterName: "Images",
+          filterExts: ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"],
+        }),
+      );
+      if (!picked) return;
+      try {
+        const target = resolveTarget();
+        const res: any = await cell(() =>
+          call("import_cover", {
+            kind: (btn as HTMLElement).dataset.kind,
+            pageSlug: target.page,
+            postSlug: target.slug,
+            sourcePath: picked,
+          }),
+        );
+        input.value = res.public_path;
+        await showCoverPreview(input, preview);
+      } catch (err) {
+        setStatus(String((err as any).message || err));
+      }
+    });
+  });
+}
+
 function showProjectsView() {
   state.view = { kind: "projects" };
   const v = viewContent();
@@ -310,6 +484,7 @@ function showProjectsView() {
       const card = el("article", "card page-card-c");
       card.innerHTML = `
         <div class="card-head"><span class="card-avatar"></span><h3>${esc(p.name)}${statusPill(p.status)}</h3></div>
+        ${p.cover ? `<div class="card-cover" data-project-cover="${esc(p.slug)}"></div>` : ""}
         <p class="card-desc">${esc(p.description || "")}</p>
         <p class="muted small">
           ${p.repo_url ? `<a href="${esc(p.repo_url)}" target="_blank" rel="noopener">repo ↗</a> ` : ""}
@@ -333,6 +508,20 @@ function showProjectsView() {
       );
     }
     v.appendChild(grid);
+    grid.querySelectorAll("[data-project-cover]").forEach((node) => {
+      const slug = (node as HTMLElement).dataset["project-cover"]!;
+      const pr = state.projects.find((p2: any) => p2.slug === slug);
+      const raw = pr?.cover;
+      if (!raw) return;
+      cell(async () => {
+        try {
+          const src = await call("read_repo_file", { relPath: coverRepoRel(raw) });
+          if (src && document.contains(node)) {
+            node.innerHTML = `<img src="${esc(String(src))}" alt="cover" />`;
+          }
+        } catch {}
+      });
+    });
     grid.querySelectorAll("[data-open-project]").forEach((b) =>
       b.addEventListener("click", () =>
         showProjectView((b as HTMLElement).dataset["open-project"]!),
@@ -365,6 +554,14 @@ function showProjectView(slug: string) {
     const doc = await call("read_project", { slug });
     if (!doc) return;
     v.appendChild(el("h1", "page-title", doc.name || slug));
+    if (doc.cover) {
+      const cover = el("div", "card-cover detail");
+      v.appendChild(cover);
+      try {
+        const src = await call("read_repo_file", { relPath: coverRepoRel(doc.cover) });
+        if (src) cover.innerHTML = `<img src="${esc(String(src))}" alt="cover" />`;
+      } catch {}
+    }
     if (doc.description) v.appendChild(el("p", "muted", doc.description));
     if (doc.repo_url || doc.live_url) {
       const links = el("p", "muted small");
@@ -436,9 +633,24 @@ function openProjectEditor(slug?: string | null) {
       <select id="pr-status"><option value="active">active</option><option value="paused">paused</option><option value="archived">archived</option></select>
     </label>
     <label>Description <textarea id="pr-desc" rows="3"></textarea></label>
+    <div class="cover-field">
+      <div class="cover-field-row"><label>Cover <input id="pr-cover" placeholder="content/projects/…/cover.jpg or empty" /></label><button data-pick-cover data-kind="project" class="btn" type="button">Choose…</button></div>
+      <img id="pr-cover-preview" class="cover-preview" hidden alt="cover" />
+    </div>
     <button id="pr-save" class="btn primary">Save</button>
   `;
   v.appendChild(form);
+  wireCoverField(
+    v,
+    "pr-cover",
+    "pr-cover-preview",
+    () => ({
+      page: "",
+      slug:
+        ($("#pr-slug") as HTMLInputElement).value.trim() ||
+        slugify(($("#pr-name") as HTMLInputElement).value.trim()),
+    }),
+  );
   if (slug) {
     cell(async () => {
       const doc = await call("read_project", { slug });
@@ -448,6 +660,11 @@ function openProjectEditor(slug?: string | null) {
       ($("#pr-live-url") as HTMLInputElement).value = doc?.live_url || "";
       ($("#pr-status") as HTMLSelectElement).value = doc?.status || "active";
       ($("#pr-desc") as HTMLTextAreaElement).value = doc?.description || "";
+      ($("#pr-cover") as HTMLInputElement).value = doc?.cover || "";
+      await showCoverPreview(
+        $("#pr-cover") as HTMLInputElement,
+        $("#pr-cover-preview") as HTMLImageElement,
+      );
     });
   }
   $("#pr-save")!.addEventListener("click", async (e: Event) => {
@@ -460,6 +677,7 @@ function openProjectEditor(slug?: string | null) {
       live_url: ($("#pr-live-url") as HTMLInputElement).value.trim(),
       status: ($("#pr-status") as HTMLSelectElement).value,
       description: ($("#pr-desc") as HTMLTextAreaElement).value.trim(),
+      cover: ($("#pr-cover") as HTMLInputElement).value.trim(),
     };
     try {
       if (slug) await call("update_project", { project });
@@ -800,7 +1018,10 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     <label>Name <input id="pe-name" required /></label>
     <label>Slug <input id="pe-slug" placeholder="auto from name" /></label>
     <label>Description <textarea id="pe-desc" rows="3"></textarea></label>
-    <label>Cover path <input id="pe-cover" placeholder="cover.jpg" /></label>
+    <div class="cover-field">
+      <div class="cover-field-row"><label>Cover <input id="pe-cover" placeholder="cover.jpg or assets/pages/…" /></label><button data-pick-cover data-kind="page" class="btn" type="button">Choose…</button></div>
+      <img id="pe-cover-preview" class="cover-preview" hidden alt="cover" />
+    </div>
     <label>Kind
       <select id="pe-kind"><option value="page">Regular page</option><option value="devlog">Devlog</option></select>
     </label>
@@ -810,6 +1031,17 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     <button id="pe-save" class="btn primary">Save</button>
   `;
   v.appendChild(form);
+  wireCoverField(
+    v,
+    "pe-cover",
+    "pe-cover-preview",
+    () => {
+      const sl =
+        ($("#pe-slug") as HTMLInputElement).value.trim() ||
+        slugify(($("#pe-name") as HTMLInputElement).value.trim());
+      return { page: sl, slug: sl };
+    },
+  );
   if (slug) {
     cell(async () => {
       const doc = await call("read_page", { slug });
@@ -817,6 +1049,10 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
       ($("#pe-slug") as HTMLInputElement).value = doc?.slug || "";
       ($("#pe-desc") as HTMLTextAreaElement).value = doc?.description || "";
       ($("#pe-cover") as HTMLInputElement).value = doc?.cover || "";
+      await showCoverPreview(
+        $("#pe-cover") as HTMLInputElement,
+        $("#pe-cover-preview") as HTMLImageElement,
+      );
       ($("#pe-kind") as HTMLSelectElement).value = doc?.kind || "page";
       ($("#pe-devlog-repo") as HTMLInputElement).value = doc?.devlog_repo || "";
       ($("#pe-order") as HTMLInputElement).value = doc?.order != null && doc?.order !== 100 ? String(doc.order) : "";
@@ -997,7 +1233,10 @@ function openPostEditor(page: string, post: PostDoc | null) {
       <label>Date <input id="po-date" type="date" /></label>
       <label>Subtitle <input id="po-subtitle" /></label>
       <label class="check-label">Featured <input id="po-featured" type="checkbox" /></label>
-      <label>Cover path <input id="po-cover" placeholder="cover.jpg" /></label>
+    </div>
+    <div class="cover-field">
+      <div class="cover-field-row"><label>Cover <input id="po-cover" placeholder="auto or assets/posts/…" /></label><button data-pick-cover data-kind="post" class="btn" type="button">Choose…</button></div>
+      <img id="po-cover-preview" class="cover-preview" hidden alt="cover" />
     </div>
     <label>Excerpt <textarea id="po-excerpt" rows="2" placeholder="Short summary…"></textarea></label>
     <div class="chip-editors">
@@ -1016,6 +1255,17 @@ function openPostEditor(page: string, post: PostDoc | null) {
     </div>
   `;
   v.append(meta, openEditor(page).getElement());
+  wireCoverField(
+    v,
+    "po-cover",
+    "po-cover-preview",
+    () => ({
+      page,
+      slug:
+        ($("#po-slug") as HTMLInputElement).value.trim() ||
+        slugify(($("#po-title") as HTMLInputElement).value.trim()),
+    }),
+  );
   if (post) {
     ($("#po-title") as HTMLInputElement).value = post.title;
     ($("#po-slug") as HTMLInputElement).value = post.slug;
@@ -1031,6 +1281,10 @@ function openPostEditor(page: string, post: PostDoc | null) {
     ($("#po-series") as HTMLInputElement).value = post.series || "";
     ($("#po-part") as HTMLInputElement).value = post.part ? String(post.part) : "";
     state.editor!.setBody(post.body);
+    void showCoverPreview(
+      $("#po-cover") as HTMLInputElement,
+      $("#po-cover-preview") as HTMLImageElement,
+    );
   } else {
     ($("#po-date") as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
     ($("#po-status") as HTMLSelectElement).value = prefsDefaultStatus();
@@ -1287,10 +1541,20 @@ function openPublish() {
     const auth = await cell(() => call("git_auth_status"));
     if (auth && !auth.authenticated) {
       body.innerHTML = `<p class="error-text">Not signed in to GitHub.</p>
-        <p class="muted">${auth.gh_installed ? "Run <code>gh auth login</code> in a terminal, then try again." : "GitHub CLI (<code>gh</code>) not installed — configure Git credentials for the remote."}</p>
-        ${auth.error ? `<pre class="diffbox">${esc(String(auth.error).slice(0, 200))}</pre>` : ""}
+        <p class="muted">${auth.gh_installed ? "Use the button below to sign in in your browser (GitHub CLI device flow)." : "GitHub CLI (<code>gh</code>) not installed — install it or configure Git credentials for the remote."}</p>
+        ${auth.error ? `<pre class="diffbox diff-big">${esc(String(auth.error).slice(0, 300))}</pre>` : ""}
+        <div class="gh-signin-area" id="pub-signin">${auth.gh_installed ? `<button id="pub-signin-btn" class="btn" style="margin:0.5rem 0">Sign in with GitHub</button>` : ""}</div>
         <div class="modal-actions"><button id="pub-cancel2" class="btn">Close</button></div>`;
       $("#pub-cancel2", overlay)!.onclick = () => overlay.remove();
+      if (auth.gh_installed) {
+        $("#pub-signin-btn", overlay)!.onclick = () => {
+          const host = $("#pub-signin", overlay)!;
+          renderSignIn(host, () => {
+            overlay.remove();
+            openPublish();
+          });
+        };
+      }
       return;
     }
     const staged = st.staged.map((f: any) => `${f.path}`).join("<br>");
@@ -1339,13 +1603,19 @@ function openPublish() {
         }
         body.innerHTML = `<p class="muted">Reviewing changed files…</p>`;
         const status2 = await call("git_status");
+        if (!status2) {
+          body.innerHTML = `<p class="error-text">Could not read Git status after the build. Nothing was committed.</p>`;
+          $("#pub-go", overlay)!.remove();
+          return;
+        }
         const paths = new Set<string>();
+        const stagePat = /^(content\/|devlog\/|devlog\.html|assets\/|pages\.html|pages\/|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json)/;
         (status2.unstaged || []).forEach((f: any) => {
-          if (/^(content\/|devlog\/|devlog\.html|assets\/dist|pages\.html|pages\/|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json)/.test(f.path)) paths.add(f.path);
+          if (stagePat.test(f.path)) paths.add(f.path);
         });
         (status2.staged || []).forEach((f: any) => paths.add(f.path));
         (status2.untracked || []).forEach((p: any) => {
-          if (/^(content\/|devlog\/|devlog\.html|assets\/dist|pages\.html|pages\/|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json)/.test(p)) paths.add(p);
+          if (stagePat.test(p)) paths.add(p);
         });
         body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)…</p>`;
         await call("git_stage_paths", { paths: Array.from(paths) });
@@ -1519,8 +1789,7 @@ function showSettings() {
       <p class="auth-desc">Used to publish changes to <strong>ahmarius.github.io</strong>.
         The app uses the GitHub CLI (<code>gh</code>) that is already on your system to sign in automatically.</p>
       <div id="auth-status" class="auth-status loading">Checking GitHub connection…</div>
-      <button id="auth-refresh" class="btn">Check again</button>
-      <p class="muted auth-hint">If it says not signed in, run <code>gh auth login</code> in a terminal.</p>
+      <p class="muted auth-hint">Use the <strong>Sign in with GitHub</strong> button below to connect through your browser (device flow).</p>
       <p class="muted">Last commit: <code id="set-lastcommit">—</code></p>
       <div class="card-actions">
         <button id="set-recover" class="btn">Recover drafts…</button>
@@ -1580,7 +1849,6 @@ function showSettings() {
     const h = $("#set-lastcommit");
     if (h) h.textContent = hash || "—";
   });
-  $("#auth-refresh")!.onclick = renderAuthStatus;
   $("#set-recover")!.onclick = openRecoveryDashboard;
   $("#set-save")!.onclick = async () => {
     const repo = ($("#set-repo") as HTMLInputElement).value.trim();
@@ -1618,22 +1886,36 @@ async function renderAuthStatus() {
   const host = $("#auth-status");
   if (!host) return;
   host.className = "auth-status loading";
-  host.textContent = "Checking GitHub connection…";
+  host.innerHTML = `<p class="muted">Checking GitHub connection…</p>`;
   await cell(async () => {
     const st = await call("git_auth_status");
     if (!st) {
       host.className = "auth-status error";
-      host.innerHTML = "Could not check GitHub (no repository configured?).";
+      host.innerHTML = "<p class=\"error-text\">Could not check GitHub (no repository configured?).</p>";
       return;
     }
     if (st.authenticated) {
       host.className = "auth-status ok";
-      host.innerHTML = `Connected to GitHub as <strong>${esc(st.remote || "origin")}</strong> — ready to publish.`;
+      const who = st.gh_login
+        ? `<strong>${esc(st.gh_login)}</strong>`
+        : esc(st.remote || "origin");
+      host.innerHTML = `Connected to GitHub as ${who} — ready to publish.
+        <p class="muted">Auth: ${esc(st.method || "git-credential")}${st.remote ? ` · remote <code>${esc(st.remote)}</code>` : ""}</p>
+        <p><button id="auth-signin" class="btn">Sign in as a different account</button> <button id="auth-refresh" class="btn">Check again</button></p>`;
     } else {
       host.className = "auth-status error";
-      host.innerHTML = `Not signed in to GitHub. ${st.gh_installed ? "Run <code>gh auth login</code> in a terminal." : "GitHub CLI (<code>gh</code>) not found — install it or configure Git credentials."}` +
-        (st.error ? ` <span class="muted">(${esc(String(st.error).slice(0, 80))})</span>` : "");
+      host.innerHTML = `Not signed in to GitHub. ${
+        st.gh_installed
+          ? "Sign in below — the app uses the GitHub CLI device flow."
+          : "GitHub CLI (<code>gh</code>) not found — install it or configure Git credentials."
+      }` +
+        (st.error ? ` <span class="muted">(${esc(String(st.error).slice(0, 120))})</span>` : "") +
+        (st.gh_installed
+          ? `<p><button id="auth-signin" class="btn">Sign in with GitHub</button> <button id="auth-refresh" class="btn">Check again</button></p>`
+          : `<p><button id="auth-refresh" class="btn">Check again</button></p>`);
     }
+    $("#auth-signin")!.onclick = () => renderSignIn(host, renderAuthStatus);
+    $("#auth-refresh")!.onclick = renderAuthStatus;
   });
 }
 

@@ -150,7 +150,7 @@ function initLinkButtons() {
  * Galleries
  * ------------------------------------------------------------------------ */
 
-const IMAGE_EXTENSIONS = ["jpg", "jpeg"];
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "svg", "avif"];
 
 function initGalleries() {
   document

@@ -23,6 +23,8 @@ pub struct ProjectInput {
     pub status: String, // active | paused | archived
     #[serde(default)]
     pub description: String,
+    #[serde(default)]
+    pub cover: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -37,6 +39,8 @@ pub struct ProjectRow {
     pub status: String,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cover: String,
     #[serde(default)]
     pub post_count: usize,
     pub path: String,
@@ -588,6 +592,7 @@ fn collect_project(repo: &Path, dir: &Path, out: &mut Vec<ProjectRow>) -> AppRes
         live_url: meta.live_url,
         status: meta.status,
         description: meta.description,
+        cover: meta.cover,
         post_count,
         path: dir.display().to_string(),
     });
@@ -626,6 +631,7 @@ struct ProjectMeta {
     live_url: String,
     status: String,
     description: String,
+    cover: String,
 }
 
 fn parse_project_raw(raw: &str) -> ProjectMeta {
@@ -636,6 +642,7 @@ fn parse_project_raw(raw: &str) -> ProjectMeta {
         live_url: String::new(),
         status: "active".to_string(),
         description: String::new(),
+        cover: String::new(),
     };
     for line in raw.lines() {
         if let Some(kv) = line.split_once(':') {
@@ -648,6 +655,7 @@ fn parse_project_raw(raw: &str) -> ProjectMeta {
                 "live_url" => meta.live_url = value,
                 "status" => meta.status = value,
                 "description" => meta.description = value,
+                "cover" => meta.cover = value,
                 _ => {}
             }
         }
@@ -671,6 +679,9 @@ fn serialize_project(p: &ProjectInput) -> String {
     if !p.description.is_empty() {
         lines.push(yaml_string("description", &p.description));
     }
+    if !p.cover.is_empty() {
+        lines.push(yaml_string("cover", &p.cover));
+    }
     lines.join("\n")
 }
 
@@ -686,6 +697,7 @@ pub fn read_project(repo: &Path, slug: &str) -> AppResult<serde_json::Value> {
         "live_url": meta.live_url,
         "status": meta.status,
         "description": meta.description,
+        "cover": meta.cover,
         "post_count": posts_in_project(repo, slug)?,
     }))
 }
@@ -721,6 +733,7 @@ pub fn create_project(repo: &Path, project: &ProjectInput) -> AppResult<ProjectR
         live_url: ours.live_url,
         status: ours.status,
         description: ours.description,
+        cover: ours.cover,
         post_count: 0,
         path: dir.display().to_string(),
     })
@@ -1191,6 +1204,7 @@ mod tests {
                 live_url: String::new(),
                 status: "active".to_string(),
                 description: "GPU experiments".to_string(),
+                cover: String::new(),
             },
         )
         .unwrap();
@@ -1239,6 +1253,7 @@ mod tests {
                 live_url: String::new(),
                 status: "paused".to_string(),
                 description: String::new(),
+                cover: String::new(),
             },
         )
         .unwrap();

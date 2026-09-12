@@ -116,14 +116,32 @@ fn lint_one_post(repo: &Path, file: &Path, rel: &str) -> AppResult<Vec<LintIssue
         });
     }
 
-    // Broken local links/images (relative to repo root).
+    // Broken local links/images. `assets/...` refs are resolved relative to
+    // the post's assets folder (content/pages/<page>/posts/<slug>/assets — the
+    // same place the editor imports them); every other relative target is
+    // checked against the repo root.
+    let assets_dir = file.with_extension("").join("assets");
+    let local_target = |target: &str| -> std::path::PathBuf {
+        let name = target.trim_start_matches("./");
+        let stripped = name.strip_prefix("assets/").unwrap_or(name);
+        assets_dir.join(stripped)
+    };
+    let exists = |target: &str| -> bool {
+        if is_asset_ref(target) {
+            local_target(target).exists()
+        } else if repo.join(pages_root_rel(target)).exists() {
+            true
+        } else {
+            local_target(target).exists()
+        }
+    };
     for (idx, line) in body.lines().enumerate() {
         let mut rest = line;
         while let Some(start) = rest.find("](./") {
             let after = &rest[start + 2..];
             let end = after.find(')').unwrap_or(after.len());
-            let target = after[..end].to_string();
-            if !target.is_empty() && !repo.join(pages_root_rel(&target)).exists() {
+            let target = &after[..end];
+            if !target.is_empty() && !exists(target) {
                 issues.push(LintIssue {
                     severity: "error".into(),
                     message: format!("Broken internal link/image: {}", target),
@@ -138,16 +156,13 @@ fn lint_one_post(repo: &Path, file: &Path, rel: &str) -> AppResult<Vec<LintIssue
             let after = &i[start + 4..];
             let end = after.find(')').unwrap_or(after.len());
             let target = &after[..end];
-            if !target.is_empty() && !target.starts_with("http") {
-                let p = repo.join(target.trim_start_matches('/'));
-                if !p.exists() {
-                    issues.push(LintIssue {
-                        severity: "error".into(),
-                        message: format!("Missing image asset: {}", target),
-                        file: rel.to_string(),
-                        line: Some(idx + 1),
-                    });
-                }
+            if !target.is_empty() && !target.starts_with("http") && !exists(target) {
+                issues.push(LintIssue {
+                    severity: "error".into(),
+                    message: format!("Missing image asset: {}", target),
+                    file: rel.to_string(),
+                    line: Some(idx + 1),
+                });
             }
             i = &after[end..];
         }
@@ -159,6 +174,11 @@ fn lint_one_post(repo: &Path, file: &Path, rel: &str) -> AppResult<Vec<LintIssue
 fn pages_root_rel(target: &str) -> std::path::PathBuf {
     let t = target.trim_start_matches("./");
     std::path::PathBuf::from(t)
+}
+
+fn is_asset_ref(target: &str) -> bool {
+    let t = target.trim_start_matches("./");
+    t == "assets" || t.starts_with("assets/")
 }
 
 #[cfg(test)]
@@ -197,6 +217,23 @@ mod tests {
         .unwrap();
         let report = lint_posts(&root).unwrap();
         assert!(!report.has_errors());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn accepts_assets_relative_to_post_dir() {
+        let root = temp_repo("assets-ok");
+        let posts = root.join("content/pages/demo/posts");
+        std::fs::create_dir_all(posts.join("p1/assets")).unwrap();
+        std::fs::write(posts.join("p1/assets/photo.png"), "not really an image").unwrap();
+        std::fs::write(
+            posts.join("p1.md"),
+            "---\ntitle: With image\ndate: 2026-09-01\nstatus: published\nexcerpt: X.\ntags: [A]\n---\n![](assets/photo.png) and ![](assets/missing.png)\n",
+        )
+        .unwrap();
+        let report = lint_posts(&root).unwrap();
+        assert!(!report.issues.iter().any(|i| i.message.contains("photo.png")));
+        assert!(report.issues.iter().any(|i| i.message.contains("missing.png")));
         std::fs::remove_dir_all(&root).ok();
     }
 }

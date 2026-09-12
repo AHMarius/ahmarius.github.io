@@ -54,3 +54,18 @@ export function ensureSafeRelative(relativePath = '') {
   }
   return cleaned;
 }
+
+/**
+ * Normalize a cover path to a safe repo-root-relative URL, or '' to mean "no
+ * cover". Absolute local paths (e.g. /home/user/Pictures/x.jpg, C:\...) and
+ * traversal paths are dropped so they can never produce broken <img> tags.
+ */
+export function sanitizeCover(value = '') {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  if (/^([a-zA-Z]:[\\/])/.test(v)) return '';
+  if (v.startsWith('\\')) return '';
+  const rel = v.replace(/^\/+/, '');
+  if (!rel || rel.split('/').includes('..')) return '';
+  return rel;
+}

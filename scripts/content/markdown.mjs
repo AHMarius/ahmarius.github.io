@@ -84,6 +84,21 @@ export function renderMarkdown(markdown = '') {
   return String(raw);
 }
 
+/**
+ * Rewrite rendered-HTML references to post-local assets (`assets/...` or
+ * `./assets/...`) so they point at the asset's published location. Only src,
+ * href and srcset attributes are touched; plain text and code blocks are left
+ * alone.
+ */
+export function rewriteAssetUrls(html, publicBase) {
+  const base = String(publicBase || '').replace(/\/+$/, '');
+  if (!base) return String(html);
+  return String(html).replace(
+    /(src|href|srcset)\s*=\s*(["'])([^"']*?)((?:\.\.?\/)*assets\/)([^"']*)\2/g,
+    (match, attr, quote, head, _prefix, tail) => `${attr}=${quote}${head}${base}/${tail}${quote}`,
+  );
+}
+
 export function renderInlineMath(latex) {
   return renderKatex(latex, false);
 }

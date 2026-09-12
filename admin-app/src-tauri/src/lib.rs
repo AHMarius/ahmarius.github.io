@@ -210,7 +210,7 @@ fn save_prefs(prefs: &Preferences, path: &Path) {
 ///   2. The current working directory if it is inside the site repo.
 ///   3. The parent/ancestors of the current working directory.
 ///   4. Common development locations under the user's home.
-fn auto_detect_repo() -> Option<PathBuf> {
+pub(crate) fn auto_detect_repo() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.clone());
@@ -494,6 +494,59 @@ fn import_asset(
 }
 
 #[tauri::command]
+fn import_cover(
+    app: tauri::AppHandle,
+    kind: String,
+    page_slug: String,
+    post_slug: String,
+    source_path: String,
+) -> Result<import::CoverResult, AppError> {
+    with_repo(&app, None, |repo| {
+        import::import_cover(repo, &kind, &page_slug, &post_slug, &source_path)
+    })
+}
+
+/// Read a repo file and return it as a base64 data URL (for admin previews).
+#[tauri::command]
+fn read_repo_file(app: tauri::AppHandle, rel_path: String) -> Result<String, AppError> {
+    with_repo(&app, None, |repo| {
+        let path = resolve_in_repo(repo, &rel_path)?;
+        if !path.is_file() {
+            return Err(AppError::Validation(format!(
+                "File not found in repo: {}",
+                rel_path
+            )));
+        }
+        let bytes = std::fs::read(&path)?;
+        if bytes.len() > 15 * 1024 * 1024 {
+            return Err(AppError::Validation(
+                "File is too large to preview in the app.".into(),
+            ));
+        }
+        let mime = match path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .as_deref()
+        {
+            Some("png") => "image/png",
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("gif") => "image/gif",
+            Some("webp") => "image/webp",
+            Some("svg") => "image/svg+xml",
+            Some("avif") => "image/avif",
+            Some("pdf") => "application/pdf",
+            _ => "application/octet-stream",
+        };
+        use base64::Engine as _;
+        Ok(format!(
+            "data:{};base64,{}",
+            mime,
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        ))
+    })
+}
+
+#[tauri::command]
 fn import_pdf(app: tauri::AppHandle, source_path: String) -> Result<import::PdfImportResult, AppError> {
     with_repo(&app, None, |repo| import::import_pdf(repo, &source_path))
 }
@@ -708,6 +761,16 @@ fn git_auth_status(app: tauri::AppHandle) -> Result<serde_json::Value, AppError>
 }
 
 #[tauri::command]
+fn github_login(app: tauri::AppHandle) -> Result<(), AppError> {
+    git::github_login(app)
+}
+
+#[tauri::command]
+fn github_auth_setup() -> Result<String, AppError> {
+    git::github_auth_setup()
+}
+
+#[tauri::command]
 fn check_repo(repo_path: String) -> Result<serde_json::Value, AppError> {
     let path = PathBuf::from(&repo_path);
     let exists = path.join("package.json").exists() && path.join("content").is_dir() && path.join("assets").is_dir();
@@ -828,10 +891,12 @@ pub fn run() {
             write_post,
             delete_post,
             import_asset,
+            import_cover,
             import_pdf,
             import_asset_bytes,
             capture_screenshot,
             pick_file,
+            read_repo_file,
             scan_media,
             delete_media,
             build_site,
@@ -844,6 +909,8 @@ pub fn run() {
             git_push,
             git_last_commit,
             git_auth_status,
+            github_login,
+            github_auth_setup,
             check_repo,
             latest_site_build,
             lint_posts,
