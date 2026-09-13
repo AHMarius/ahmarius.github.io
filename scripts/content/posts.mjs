@@ -29,6 +29,8 @@ export async function readPost(filePath) {
     page: meta.page || '',
     subtitle: meta.subtitle || '',
     cover: meta.cover || '',
+    series: meta.series || '',
+    part: Number(meta.part) || 0,
     readTime: buildReadTime(body),
     body,
     meta,
