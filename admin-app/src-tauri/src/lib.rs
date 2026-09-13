@@ -180,9 +180,12 @@ struct AppState {
 }
 
 fn default_config_dir() -> PathBuf {
-    std::env::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".config")
+    dirs::config_dir()
+        .unwrap_or_else(|| {
+            std::env::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".config")
+        })
         .join("ahmarius-content-studio")
 }
 
