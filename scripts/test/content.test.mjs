@@ -45,8 +45,8 @@ test('nested page creation + discovery', async () => {
   const fluid = path.join(pagesRoot, 'fluid-dynamics');
   const gpu = path.join(fluid, 'subpages', 'gpu-port');
   await fs.mkdir(gpu, { recursive: true });
-  await fs.writeFile(path.join(fluid, 'page.yml'), 'name: "FluidDynamics"\nslug: "fluid-dynamics"\n');
-  await fs.writeFile(path.join(gpu, 'page.yml'), 'name: "GPU Port"\nslug: "gpu-port"\nparent: "fluid-dynamics"\n');
+  await fs.writeFile(path.join(fluid, 'page.yml'), '---\nname: "FluidDynamics"\nslug: "fluid-dynamics"\n---\n');
+  await fs.writeFile(path.join(gpu, 'page.yml'), '---\nname: "GPU Port"\nslug: "gpu-port"\nparent: "fluid-dynamics"\n---\n');
 
   const { roots, pages } = await buildPageHierarchy(pagesRoot);
   assert.equal(roots.length, 1);
@@ -82,8 +82,8 @@ test('compute page last-updated across hierarchy', async () => {
   const fluid = path.join(pagesRoot, 'fluid-dynamics');
   const gpu = path.join(fluid, 'subpages', 'gpu-port');
   await fs.mkdir(path.join(gpu, 'posts'), { recursive: true });
-  await fs.writeFile(path.join(fluid, 'page.yml'), 'name: "FluidDynamics"\n');
-  await fs.writeFile(path.join(gpu, 'page.yml'), 'name: "GPU Port"\nparent: "fluid-dynamics"\n');
+  await fs.writeFile(path.join(fluid, 'page.yml'), '---\nname: "FluidDynamics"\nslug: "fluid-dynamics"\n---\n');
+  await fs.writeFile(path.join(gpu, 'page.yml'), '---\nname: "GPU Port"\nslug: "gpu-port"\nparent: "fluid-dynamics"\n---\n');
   await writePost(
     path.join(gpu, 'posts', 'late.md'),
     { title: 'Late', slug: 'late', date: '2026-08-01', updatedDate: '2026-08-30' },

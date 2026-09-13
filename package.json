@@ -6,7 +6,8 @@
     "build": "node scripts/build-site.mjs",
     "dev": "node scripts/serve.mjs",
     "preview": "node scripts/serve.mjs",
-    "test": "node --test scripts/test/"
+    "lint": "node scripts/lint.mjs",
+    "test": "node scripts/lint.mjs && node --test scripts/test/"
   },
   "devDependencies": {
     "gray-matter": "^4.0.3",

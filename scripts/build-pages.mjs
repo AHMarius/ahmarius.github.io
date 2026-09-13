@@ -7,6 +7,7 @@ import { postAssetsBase, copyAllPostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute } from './content/templates.mjs';
 import { computePageUpdatedDate } from './content/metadata.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
+import { validatePageMeta, assertValidMeta } from './content/schema.mjs';
 
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, 'pages');
@@ -236,7 +237,8 @@ function seriesNavHtml(posts, current) {
 
 export async function buildPages(opts = {}) {
   const { log = console, mode = 'publish' } = opts;
-  const hierarchy = await buildPageHierarchy(PAGES_ROOT);
+  const strict = mode === 'publish';
+  const hierarchy = await buildPageHierarchy(PAGES_ROOT, strict);
   const { roots, pages, postsByPage } = hierarchy;
 
   await fs.mkdir(OUT_DIR, { recursive: true });

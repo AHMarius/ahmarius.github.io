@@ -1,7 +1,9 @@
 name: Build & publish site
 
 on:
-  # Manual only — no automatic build on commits.
+  push:
+    branches:
+      - main
   schedule:
     # Rebuild a few times a day so future-dated posts (front-matter `date`)
     # appear automatically even when the editor is offline.
@@ -24,25 +26,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          ruby-version: '3.3'
-          bundler-cache: true
+          node-version: '22'
+          cache: npm
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build with Jekyll
-        run: bundle exec jekyll build
-        env:
-          JEKYLL_ENV: production
-          PAGES_REPO_NWO: ${{ github.repository }}
+      - name: Lint content + frontmatter schema
+        run: npm run lint
+
+      - name: Run the test suite
+        run: npm test
+
+      - name: Build site (publish)
+        run: npm run build -- --mode publish
+
+      - name: Guard against draft leaks in published output
+        run: node scripts/check-leaks.mjs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: dist
 
   deploy:
     needs: build

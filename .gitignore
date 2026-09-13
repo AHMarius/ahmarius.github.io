@@ -9,6 +9,9 @@ games/justdrive/CMakeFiles/
 games/justdrive/Makefile
 games/justdrive/cmake_install.cmake
 
+# Vite dev-server cache (admin-app) — should never be committed
+.vite/
+
 # Editor-written site config (giscus/umami settings; no secrets)
 .studio-config.json
 _site/

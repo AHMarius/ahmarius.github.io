@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { buildDevlog, parseMode } from './build-devlog.mjs';
+import { buildDevlog, parseMode, copyDistTree } from './build-devlog.mjs';
 import { buildPages } from './build-pages.mjs';
 
 const ROOT = process.cwd();
@@ -18,15 +18,18 @@ async function copyKatexAssets() {
   }
 }
 
-async function buildSite() {
+async function buildSite(mode = runMode) {
   await copyKatexAssets();
-  const devlogResult = await buildDevlog({ copyDist: false, mode: runMode });
-  const pagesResult = await buildPages({ mode: runMode });
+  const devlogResult = await buildDevlog({ copyDist: false, mode });
+  const pagesResult = await buildPages({ mode });
+  // Publish builds are the deployable snapshot; copy the tree once both
+  // sub-builds have written their output so dist/ is complete.
+  if (mode === 'publish') await copyDistTree();
   return { devlogResult, pagesResult };
 }
 
 async function main() {
-  await buildSite();
+  await buildSite(runMode);
 }
 
 if (process.argv[1] === import.meta.url || process.argv[1] === new URL(import.meta.url).pathname) {

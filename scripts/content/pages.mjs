@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { PAGES_ROOT, slugify, resolveInside } from './paths.mjs';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
+import { validatePageMeta, assertValidMeta } from './schema.mjs';
 
 const PAGE_FILE = 'page.yml';
 const POSTS_DIR = 'posts';
@@ -67,7 +68,7 @@ export async function findPageDirectories(root = PAGES_ROOT) {
   return results.filter((p) => p.dir !== root);
 }
 
-export async function getPageTree(root = PAGES_ROOT) {
+export async function getPageTree(root = PAGES_ROOT, strict = false) {
   const pages = await findPageDirectories(root);
   const byKey = new Map();
   for (const p of pages) {
@@ -78,7 +79,12 @@ export async function getPageTree(root = PAGES_ROOT) {
       meta = m.meta;
       body = m.body;
     } catch {
-      // use defaults
+      // page.yml unreadable; fall through to defaults
+    }
+    const issues = validatePageMeta(meta);
+    if (issues.length > 0) {
+      if (strict) assertValidMeta(path.join(p.dir, PAGE_FILE), issues, true);
+      else console.warn(`[lint-warning] ${path.join(p.dir, PAGE_FILE)}: ${issues.join('; ')}`);
     }
     byKey.set(p.dir, {
       slug: p.slug,
@@ -95,8 +101,8 @@ export async function getPageTree(root = PAGES_ROOT) {
   return Array.from(byKey.values());
 }
 
-export async function buildPageHierarchy(root = PAGES_ROOT) {
-  const pages = await getPageTree(root);
+export async function buildPageHierarchy(root = PAGES_ROOT, strict = false) {
+  const pages = await getPageTree(root, strict);
   const postsByPage = new Map();
 
   for (const page of pages) {

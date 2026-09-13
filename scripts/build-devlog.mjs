@@ -6,6 +6,7 @@ import { renderMarkdown, truncateText, buildReadTime, headingsFromMarkdown, rewr
 import { postAssetsBase, copyAllPostAssets, removePostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute, depthPrefix } from './content/templates.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
+import { validatePostMeta, assertValidMeta } from './content/schema.mjs';
 import {
   generateFeed,
   generateAtom,
@@ -60,7 +61,7 @@ const studioConfig = await loadStudioConfig();
 async function loadAllPosts(onlyPublished = false) {
   const posts = [];
 
-  const hierarchy = await buildPageHierarchy(PAGES_ROOT);
+  const hierarchy = await buildPageHierarchy(PAGES_ROOT, onlyPublished);
 
   for (const page of hierarchy.pages) {
     const postsDir = path.join(page.dir, 'posts');
@@ -75,6 +76,7 @@ async function loadAllPosts(onlyPublished = false) {
       const { meta, body } = parseFrontmatter(
         await fs.readFile(path.join(postsDir, entry.name), 'utf8'),
       );
+      assertValidMeta(entry.name, validatePostMeta(meta), onlyPublished);
       const slug = meta.slug || entry.name.replace(/\.md$/, '');
       const publishAt = meta.publishAt || meta.publish_at || '';
       // Scheduled posts: treat a future publish_at like a draft until its date.
@@ -119,6 +121,7 @@ async function loadAllPosts(onlyPublished = false) {
     const { meta, body } = parseFrontmatter(
       await fs.readFile(path.join(LEGACY_CONTENT_DIR, entry.name), 'utf8'),
     );
+    assertValidMeta(entry.name, validatePostMeta(meta), onlyPublished);
     const slug = meta.slug || entry.name.replace(/\.md$/, '');
     const publishAt = meta.publishAt || meta.publish_at || '';
     const status = publishStatus(meta.status || 'published', publishAt);
@@ -480,15 +483,27 @@ async function copyDistTree(log = console) {
   const namesToSkip = new Set([
     '.git',
     '.idea',
+    '.github',
+    '.jekyll-cache',
+    '_site',
     'node_modules',
     'dist',
     'content',
     'admin',
+    'admin-app',
     'docs',
     'scripts',
+    '_layouts',
+    '_includes',
+    '_posts',
+    '_hubs',
+    '_drafts',
+    'ADMIN_APP_BUILD_PROMPT(1).md',
     'package-lock.json',
     'package.json',
     'README.md',
+    '.studio-config.json',
+    'generate-manifests.sh',
   ]);
   async function copyDir(src, dest) {
     await fs.mkdir(dest, { recursive: true });
@@ -509,6 +524,8 @@ async function copyDistTree(log = console) {
   await copyDir(ROOT, DIST_DIR);
   log.log('Built dist/ tree.');
 }
+
+export { copyDistTree };
 
 async function main() {
   await buildDevlog({ copyDist: false });
