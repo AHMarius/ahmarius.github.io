@@ -1,5 +1,22 @@
 import matter from 'gray-matter';
 
+function unwrapQuotes(value) {
+  return value.replace(/^['"]|['"]$/g, '');
+}
+
+function parseScalar(value) {
+  const v = value.trim();
+  if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
+    return unwrapQuotes(v);
+  }
+  if (v === 'null' || v === '~') return null;
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  if (v === '[]') return [];
+  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+  return v;
+}
+
 export function parseFrontmatter(fileContent) {
   const parsed = matter(String(fileContent), {
     engines: {
@@ -10,10 +27,10 @@ export function parseFrontmatter(fileContent) {
         for (const line of lines) {
           if (!line.trim()) continue;
           if (/^\s*-\s+/.test(line)) {
-            const item = line.replace(/^\s*-\s+/, '').trim().replace(/^['"]|['"]$/g, '');
+            const item = line.replace(/^\s*-\s+/, '');
             if (currentKey) {
               if (!Array.isArray(obj[currentKey])) obj[currentKey] = [];
-              obj[currentKey].push(item);
+              obj[currentKey].push(parseScalar(item));
             }
             continue;
           }
@@ -26,7 +43,7 @@ export function parseFrontmatter(fileContent) {
             obj[key] = [];
           } else {
             currentKey = null;
-            obj[key] = value.replace(/^['"]|['"]$/g, '');
+            obj[key] = parseScalar(value);
           }
         }
         return obj;

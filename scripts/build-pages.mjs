@@ -284,6 +284,19 @@ export async function buildPages(opts = {}) {
 
   const gridPosts = mode === 'publish' ? allPosts.filter((p) => p.status === 'published') : allPosts;
   const published = allPosts.filter((p) => p.status === 'published');
+  // In publish mode, remove stale post pages (e.g. draft pages left behind by
+  // a previous preview build) so the output reflects exactly the published set.
+  if (mode === 'publish') {
+    const keep = new Set(gridPosts.map((p) => `${p.slug}.html`));
+    for (const page of pages) {
+      const subDir = path.join(OUT_DIR, page.slug);
+      const existing = await fs.readdir(subDir).catch(() => []);
+      for (const name of existing) {
+        if (name === 'index.html' || !name.endsWith('.html') || keep.has(name)) continue;
+        await fs.rm(path.join(subDir, name), { force: true });
+      }
+    }
+  }
   // Post-local assets live under the same URL whether the post renders on the
   // devlog or on its page hub; copying is idempotent and safe on its own.
   await copyAllPostAssets(allPosts);

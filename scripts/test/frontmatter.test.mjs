@@ -46,8 +46,27 @@ test('serialize round-trip', () => {
   const { meta: parsed, body } = parseFrontmatter(md);
   assert.equal(parsed.title, 'Hi');
   assert.deepEqual(parsed.tags, ['a', 'b']);
-  assert.equal(parsed.featured, 'true');
+  assert.equal(parsed.featured, true);
   assert.equal(body, 'Body');
+});
+
+test('parse YAML scalar types (null / booleans / numbers)', () => {
+  const src = `---
+title: "X"
+enabled: true
+disabled: false
+empty: null
+order: 10
+score: 3.5
+---
+Body
+`;
+  const { meta } = parseFrontmatter(src);
+  assert.equal(meta.enabled, true);
+  assert.equal(meta.disabled, false);
+  assert.equal(meta.empty, null);
+  assert.equal(meta.order, 10);
+  assert.equal(meta.score, 3.5);
 });
 
 test('serialize empty list', () => {

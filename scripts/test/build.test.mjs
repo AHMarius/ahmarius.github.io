@@ -139,9 +139,9 @@ test('site output never leaks draft content into metadata files', async () => {
 test('publish build generates tag/tech/project archives', async () => {
   await runBuild({ mode: 'publish' });
   // tag archive exists and contains the linked post
-  const tagRef = await fs.readFile(path.join(REPO, 'devlog', 'tag', 'simulation', 'index.html'), 'utf8');
+  const tagRef = await fs.readFile(path.join(REPO, 'devlog', 'tag', 'simulation.html'), 'utf8');
   assert.match(tagRef, /first-solver\.html/);
-  const techRef = await fs.readFile(path.join(REPO, 'devlog', 'tech', 'c', 'index.html'), 'utf8');
+  const techRef = await fs.readFile(path.join(REPO, 'devlog', 'tech', 'c.html'), 'utf8');
   assert.match(techRef, /first-solver\.html/);
 });
 
@@ -156,6 +156,15 @@ test('post pages include OG/Twitter meta, JSON-LD, canonical, and search index e
 
   const searchIndex = JSON.parse(await fs.readFile(path.join(REPO, 'search-index.json'), 'utf8'));
   assert.ok(searchIndex.some((e) => e.slug === 'first-solver' && e.url === '/devlog/first-solver.html'));
+});
+
+test('publish mode removes stale draft post pages from page hubs', async () => {
+  await runBuild({ mode: 'preview' });
+  await fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'hidden-draft-secret.html'));
+  await runBuild({ mode: 'publish' });
+  await assert.rejects(fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'hidden-draft-secret.html')));
+  // The published post page survives the publish pass.
+  await fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'first-solver.html'));
 });
 
 test('feed/sitemap/robots are not generated in preview mode before publish', async () => {

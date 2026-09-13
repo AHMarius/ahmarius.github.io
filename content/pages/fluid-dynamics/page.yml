@@ -1,0 +1,8 @@
+---
+name: "FluidDynamics"
+slug: "fluid-dynamics"
+description: "Experiments in fluid simulation and solver development."
+cover: ""
+parent: null
+order: 10
+---

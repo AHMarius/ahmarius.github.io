@@ -1,6 +1,0 @@
----
-name: "ertert"
-slug: "ertert"
-parent: null
-order: 100
----

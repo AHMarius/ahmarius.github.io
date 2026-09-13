@@ -1,6 +1,0 @@
----
-name: "wee"
-slug: "wee"
-parent: null
-order: 100
----

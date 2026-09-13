@@ -158,15 +158,16 @@ async function loadPublishedPosts() {
 }
 
 function cardMarkup(post, nested = false) {
+  const archiveDir = nested ? '' : 'devlog/';
   const projectLabel = post.project
-    ? `<a class="devlog-meta" href="project/${archiveSlug(post.project)}.html">${escapeHtml(post.project)}</a>`
+    ? `<a class="devlog-meta" href="${archiveDir}project/${archiveSlug(post.project)}.html">${escapeHtml(post.project)}</a>`
     : '';
   const postHref = nested ? `${post.slug}.html` : `devlog/${post.slug}.html`;
   const pageLabel = post.pageName
     ? `<span class="devlog-meta devlog-page">${escapeHtml(post.pageName)}</span>`
     : '';
-  const tags = (post.tags || []).map((tag) => `<a class="devlog-tag" href="tag/${archiveSlug(tag)}.html">${escapeHtml(tag)}</a>`).join('');
-  const techs = (post.technologies || []).map((tech) => `<a class="devlog-tech-item" href="tech/${archiveSlug(tech)}.html">${escapeHtml(tech)}</a>`).join('');
+  const tags = (post.tags || []).map((tag) => `<a class="devlog-tag" href="${archiveDir}tag/${archiveSlug(tag)}.html">${escapeHtml(tag)}</a>`).join('');
+  const techs = (post.technologies || []).map((tech) => `<a class="devlog-tech-item" href="${archiveDir}tech/${archiveSlug(tech)}.html">${escapeHtml(tech)}</a>`).join('');
   return `
     <article class="devlog-card" data-search="${escapeAttribute(
       `${post.title} ${post.excerpt} ${post.pageName} ${post.tags.join(' ')} ${post.technologies.join(' ')}`,
@@ -372,7 +373,8 @@ async function buildArchives(posts, devlogDir) {
   const archives = [];
   const renderArchive = (label, values, kind) => {
     const slug = archiveSlug(label);
-    const dir = path.join(devlogDir, kind, slug);
+    const dir = path.join(devlogDir, kind);
+    const file = path.join(dir, `${slug}.html`);
     const cards = posts.filter((p) => (kind === 'tag' ? (p.tags || []).includes(label) : kind === 'tech' ? (p.technologies || []).includes(label) : p.project === label)).map((p) => cardMarkup(p, false)).join('\n');
     const url = `/devlog/${kind}/${slug}.html`;
     return async () => {
@@ -396,7 +398,7 @@ async function buildArchives(posts, devlogDir) {
           </main>
         `,
       });
-      await fs.writeFile(path.join(dir, 'index.html'), html, 'utf8');
+      await fs.writeFile(file, html, 'utf8');
       archives.push({ url });
     };
   };

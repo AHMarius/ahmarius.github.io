@@ -3,5 +3,11 @@
   <title>Devlog</title>
   <link href="https://ahmarius.github.io/feed.xml" rel="self" />
   <id>https://ahmarius.github.io/</id>
-
+  <entry>
+    <title>First Solver</title>
+    <link href="https://ahmarius.github.io/devlog/first-solver.html" />
+    <id>https://ahmarius.github.io/devlog/first-solver.html</id>
+    <updated>2026-09-01T00:00:00.000Z</updated>
+    <summary>First Solver This is a test post with inline math and a block:</summary>
+  </entry>
 </feed>

@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "slug": "first-solver",
+    "title": "First Solver",
+    "excerpt": "First Solver This is a test post with inline math and a block:",
+    "tags": [
+      "Simulation"
+    ],
+    "technologies": [
+      "C++"
+    ],
+    "project": "",
+    "page": "fluid-dynamics",
+    "date": "2026-09-01",
+    "updatedDate": "2026-09-01",
+    "url": "/devlog/first-solver.html"
+  }
+]
