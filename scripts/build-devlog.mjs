@@ -51,9 +51,15 @@ function publishStatus(status, publishAt) {
 /** Site-wide settings (giscus/umami) written by the editor before a build. */
 async function loadStudioConfig() {
   try {
-    return JSON.parse(await fs.readFile(path.join(ROOT, '.studio-config.json'), 'utf8'));
+    return JSON.parse(await fs.readFile(path.join(ROOT, 'content', 'site-settings.json'), 'utf8'));
   } catch {
-    return {};
+    // Compatibility for a local config created by pre-1.1 versions of the
+    // studio. New builds always use the tracked content config above.
+    try {
+      return JSON.parse(await fs.readFile(path.join(ROOT, '.studio-config.json'), 'utf8'));
+    } catch {
+      return {};
+    }
   }
 }
 const studioConfig = await loadStudioConfig();
@@ -466,6 +472,9 @@ export async function buildDevlog(opts = {}) {
 
   // Open Graph images (SVG, no binary deps) for posts without a custom cover.
   const ogDir = path.join(ROOT, 'assets', 'og');
+  // These SVGs are generated output.  Clearing them first makes post deletion
+  // visible to Git and prevents an old social image from remaining public.
+  await fs.rm(ogDir, { recursive: true, force: true });
   await fs.mkdir(ogDir, { recursive: true });
   for (const post of published) {
     if (post.cover) continue;

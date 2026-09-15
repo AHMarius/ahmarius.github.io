@@ -167,6 +167,32 @@ test('publish mode removes stale draft post pages from page hubs', async () => {
   await fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'first-solver.html'));
 });
 
+test('publish mode removes stale deleted page output and generated assets', async () => {
+  const stalePage = path.join(REPO, 'pages', 'removed-page');
+  const staleCover = path.join(REPO, 'assets', 'pages', 'removed-page');
+  const stalePostAsset = path.join(REPO, 'assets', 'posts', 'fluid-dynamics', 'hidden-draft-secret');
+  const staleOg = path.join(REPO, 'assets', 'og', 'removed-post.svg');
+  await fs.mkdir(stalePage, { recursive: true });
+  await fs.mkdir(staleCover, { recursive: true });
+  await fs.mkdir(stalePostAsset, { recursive: true });
+  await fs.mkdir(path.dirname(staleOg), { recursive: true });
+  await Promise.all([
+    fs.writeFile(path.join(stalePage, 'index.html'), 'stale'),
+    fs.writeFile(path.join(staleCover, 'cover.png'), 'stale'),
+    fs.writeFile(path.join(stalePostAsset, 'draft.png'), 'stale'),
+    fs.writeFile(staleOg, 'stale'),
+  ]);
+
+  await runBuild({ mode: 'publish' });
+
+  await Promise.all([
+    assert.rejects(fs.access(stalePage)),
+    assert.rejects(fs.access(staleCover)),
+    assert.rejects(fs.access(stalePostAsset)),
+    assert.rejects(fs.access(staleOg)),
+  ]);
+});
+
 test('feed/sitemap/robots are not generated in preview mode before publish', async () => {
   // Ensure preview doesn't produce the shallow-copy artifacts before a publish.
   await runBuild({ mode: 'preview' });

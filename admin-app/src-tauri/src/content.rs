@@ -7,6 +7,8 @@ const POSTS_DIR: &str = "posts";
 const SUBPAGES_DIR: &str = "subpages";
 const PROJECTS_DIR: &str = "content/projects";
 const PROJECT_FILE: &str = "project.yml";
+const TRASH_DIR: &str = ".trash";
+const TRASH_MANIFEST: &str = ".restore.json";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct ProjectInput {
@@ -81,6 +83,14 @@ pub struct PostMeta {    #[serde(default)]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PostInput {
     pub page_slug: String,
+    /// Present only when editing an existing post. This makes a slug change an
+    /// explicit rename rather than accidentally creating a duplicate post.
+    #[serde(default)]
+    pub original_slug: String,
+    /// Per-editor-session asset folder used before a new post receives its
+    /// final slug.
+    #[serde(default)]
+    pub draft_asset_slug: String,
     pub meta: PostMeta,
     pub body: String,
 }
@@ -155,8 +165,9 @@ pub struct ContentNode {
 }
 
 fn yaml_string(key: &str, value: &str) -> String {
-    let escaped = value.replace('"', "\\\"");
-    format!("{}: \"{}\"", key, escaped)
+    // JSON strings are valid YAML scalars and correctly preserve quotes,
+    // backslashes, Unicode and line breaks.
+    format!("{}: {}", key, serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into()))
 }
 
 fn yaml_list(items: &[String]) -> String {
@@ -165,7 +176,7 @@ fn yaml_list(items: &[String]) -> String {
     }
     items
         .iter()
-        .map(|i| format!("  - {}", i.replace('"', "\\\"")))
+        .map(|i| format!("  - {}", serde_json::to_string(i).unwrap_or_else(|_| "\"\"".into())))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -219,6 +230,10 @@ pub fn serialize_post(meta: &PostMeta, body: &str) -> String {
 
 pub fn serialize_page(page: &PageInput) -> String {
     let mut out = String::new();
+    // Page metadata is consumed by the same frontmatter parser as posts.
+    // Without these delimiters a page created in the studio looks valid to the
+    // Rust editor but is invisible/broken in the Node publish pipeline.
+    out.push_str("---\n");
     out.push_str(&yaml_string("name", &page.name));
     out.push('\n');
     out.push_str(&yaml_string("slug", &page.slug));
@@ -247,6 +262,7 @@ pub fn serialize_page(page: &PageInput) -> String {
         }
     }
     out.push_str(&format!("order: {}\n", page.order.unwrap_or(100)));
+    out.push_str("---\n");
     out
 }
 
@@ -257,6 +273,14 @@ fn line_items<'a>(line: &'a str) -> Option<&'a str> {
     } else {
         None
     }
+}
+
+fn parse_scalar(raw: &str) -> String {
+    let value = raw.trim();
+    if value.starts_with('"') {
+        return serde_json::from_str::<String>(value).unwrap_or_else(|_| value.trim_matches('"').to_string());
+    }
+    value.trim_matches('\'').to_string()
 }
 
 pub fn parse_post(raw: &str) -> (PostMeta, String) {
@@ -290,8 +314,8 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
             if let Some(item) = line_items(line) {
                 if let Some(list) = current_list {
                     match list {
-                        "tags" => meta.tags.push(item.to_string()),
-                        "technologies" => meta.technologies.push(item.to_string()),
+                        "tags" => meta.tags.push(parse_scalar(item)),
+                        "technologies" => meta.technologies.push(parse_scalar(item)),
                         _ => {}
                     }
                 }
@@ -300,7 +324,7 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
             current_list = None;
             if let Some(kv) = line.split_once(':') {
                 let key = kv.0.trim();
-                let value = kv.1.trim().trim_matches('"').to_string();
+                let value = parse_scalar(kv.1);
                 if value.is_empty() {
                     if key == "tags" {
                         current_list = Some("tags");
@@ -337,7 +361,7 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
 }
 
 fn atomic_write(path: &Path, content: &str) -> AppResult<()> {
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    let tmp = path.with_extension(format!("tmp-{}-{}", std::process::id(), chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()));
     std::fs::write(&tmp, content)?;
     std::fs::rename(&tmp, path)?;
     Ok(())
@@ -530,6 +554,14 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
         }
         _ => page_dir_of(repo, &slug)?,
     };
+    if dir.join(PAGE_FILE).exists() {
+        return Err(AppError::Validation(format!("Page already exists: {}", slug)));
+    }
+    if let Some(parent) = &page.parent {
+        if !parent.is_empty() && !page_dir_of(repo, parent)?.join(PAGE_FILE).exists() {
+            return Err(AppError::Validation(format!("Parent page does not exist: {}", parent)));
+        }
+    }
     std::fs::create_dir_all(&dir)?;
     let input = PageInput {
         name: page.name.clone(),
@@ -559,6 +591,9 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
 pub fn update_page(repo: &Path, page: &PageInput) -> AppResult<()> {
     let slug = ensure_safe_slug(&page.slug)?;
     let dir = page_dir_of(repo, &slug)?;
+    if !dir.join(PAGE_FILE).exists() {
+        return Err(AppError::Validation(format!("Page not found: {}. Rename pages through the dedicated rename flow.", slug)));
+    }
     atomic_write(&dir.join(PAGE_FILE), &serialize_page(page))?;
     Ok(())
 }
@@ -578,7 +613,6 @@ pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
                     let Some(sub_slug) = sub_dir.file_name().map(|s| s.to_string_lossy().to_string()) else {
                         continue;
                     };
-                    remove_staged_page_assets(repo, &sub_slug);
                     for post in post_slugs_in(&sub_dir.join(POSTS_DIR)) {
                         entries.push((sub_slug.clone(), post));
                     }
@@ -586,8 +620,29 @@ pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
             }
         }
     }
+    let mut moved: Vec<(PathBuf, String)> = Vec::new();
     if dir.exists() {
-        std::fs::remove_dir_all(&dir)?;
+        let original = repo_relative(repo, &dir)?;
+        moved.push((dir.clone(), original));
+    }
+    // Trash every staged asset copy (page cover + each post's published
+    // assets) so restore brings back images and covers, not just the .md files.
+    for (page, post) in &entries {
+        let staged_rel = format!("assets/posts/{}/{}", page, post);
+        if let Ok(path) = resolve_in_repo(repo, &staged_rel) {
+            if path.exists() {
+                moved.push((path, staged_rel));
+            }
+        }
+    }
+    if let Ok(path) = resolve_in_repo(repo, &format!("assets/pages/{}", slug)) {
+        if path.exists() {
+            moved.push((path, format!("assets/pages/{}", slug)));
+        }
+    }
+    if !moved.is_empty() {
+        let refs: Vec<(&Path, &str)> = moved.iter().map(|(p, s)| (p.as_path(), s.as_str())).collect();
+        move_to_trash(repo, "page", &slug, &refs)?;
     }
     for (page, post) in &entries {
         remove_staged_post_assets(repo, page, post);
@@ -793,6 +848,9 @@ pub fn create_project(repo: &Path, project: &ProjectInput) -> AppResult<ProjectR
 pub fn update_project(repo: &Path, project: &ProjectInput) -> AppResult<()> {
     let slug = ensure_safe_slug(&project.slug)?;
     let dir = project_dir_of(repo, &slug)?;
+    if !dir.join(PROJECT_FILE).exists() {
+        return Err(AppError::Validation(format!("Project not found: {}", slug)));
+    }
     atomic_write(&dir.join(PROJECT_FILE), &serialize_project(project))?;
     Ok(())
 }
@@ -800,15 +858,20 @@ pub fn update_project(repo: &Path, project: &ProjectInput) -> AppResult<()> {
 pub fn delete_project(repo: &Path, slug: &str) -> AppResult<()> {
     let slug = ensure_safe_slug(slug)?;
     let dir = project_dir_of(repo, &slug)?;
+    let mut moved: Vec<(PathBuf, String)> = Vec::new();
     if dir.exists() {
-        std::fs::remove_dir_all(&dir)?;
+        moved.push((dir.clone(), format!("{}/{}", PROJECTS_DIR, slug)));
     }
-    remove_staged_page_assets(repo, &slug);
     if let Ok(path) = resolve_in_repo(repo, &format!("assets/projects/{}", slug)) {
         if path.exists() {
-            let _ = std::fs::remove_dir_all(&path);
+            moved.push((path, format!("assets/projects/{}", slug)));
         }
     }
+    if !moved.is_empty() {
+        let refs: Vec<(&Path, &str)> = moved.iter().map(|(p, s)| (p.as_path(), s.as_str())).collect();
+        move_to_trash(repo, "project", &slug, &refs)?;
+    }
+    remove_staged_page_assets(repo, &slug);
     let _ = remove_generated(repo, &format!("projects/{}", slug));
     Ok(())
 }
@@ -926,28 +989,58 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
         input.meta.slug.clone()
     };
     ensure_safe_slug(&post_slug)?;
-    let file = post_file_of(repo, &page_slug, &post_slug)?;
+    let original_slug = input.original_slug.trim();
+    if !original_slug.is_empty() {
+        ensure_safe_slug(original_slug)?;
+    }
+    let original_file = if original_slug.is_empty() {
+        None
+    } else {
+        let file = post_file_of(repo, &page_slug, original_slug)?;
+        if !file.is_file() {
+            return Err(AppError::Validation(format!("Post not found: {}", original_slug)));
+        }
+        Some(file)
+    };
+    let file = if let Some(existing) = original_file.as_ref() {
+        let parent = existing.parent().ok_or_else(|| AppError::Validation("Could not resolve post destination.".into()))?;
+        parent.join(format!("{}.md", post_slug))
+    } else {
+        post_file_of(repo, &page_slug, &post_slug)?
+    };
+    if original_file.as_ref().map(|f| f != &file).unwrap_or(false) && file.exists() {
+        return Err(AppError::Validation(format!("A post with slug '{}' already exists.", post_slug)));
+    }
+    if original_file.is_none() && file.exists() {
+        return Err(AppError::Validation(format!("A post with slug '{}' already exists.", post_slug)));
+    }
     let today = today_iso();
+    if input.meta.title.trim().is_empty() {
+        return Err(AppError::Validation("Post title must not be empty.".into()));
+    }
+    let status = if input.meta.status.is_empty() { "draft" } else { input.meta.status.as_str() };
+    if !matches!(status, "draft" | "published") {
+        return Err(AppError::Validation("Post status must be either draft or published.".into()));
+    }
+    let date = if input.meta.date.is_empty() { today.clone() } else { input.meta.date.clone() };
+    if !is_iso_date(&date) {
+        return Err(AppError::Validation("Post date must use YYYY-MM-DD.".into()));
+    }
     let meta = PostMeta {
         title: input.meta.title.clone(),
         slug: post_slug.clone(),
-        date: if input.meta.date.is_empty() {
-            today.clone()
-        } else {
-            input.meta.date.clone()
-        },
+        date,
         updated_date: today,
-        status: if input.meta.status.is_empty() {
-            "draft".to_string()
-        } else {
-            input.meta.status.clone()
-        },
+        status: status.to_string(),
         excerpt: input.meta.excerpt.clone(),
         featured: input.meta.featured,
         page: page_slug.clone(),
         project: input.meta.project.clone(),
         subtitle: input.meta.subtitle.clone(),
-        cover: input.meta.cover.clone(),
+        cover: input.meta.cover.replace(
+            &format!("assets/posts/{}/{}/", page_slug, input.draft_asset_slug),
+            &format!("assets/posts/{}/{}/", page_slug, post_slug),
+        ),
         series: input.meta.series.clone(),
         part: input.meta.part,
         tags: input.meta.tags.clone(),
@@ -958,6 +1051,24 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
         ensure_page_meta(parent)?;
     }
     atomic_write(&file, &serialize_post(&meta, &input.body))?;
+    if let Some(old_file) = original_file {
+        if old_file != file {
+            let old_assets = old_file.with_extension("");
+            let new_assets = file.with_extension("");
+            if old_assets.is_dir() && !new_assets.exists() {
+                std::fs::rename(&old_assets, &new_assets)?;
+            }
+            std::fs::remove_file(old_file)?;
+        }
+    } else if !input.draft_asset_slug.trim().is_empty() {
+        let draft_slug = ensure_safe_slug(&input.draft_asset_slug)?;
+        let draft_assets = file.parent().unwrap_or_else(|| Path::new(""))
+            .join(&draft_slug);
+        let final_assets = file.with_extension("");
+        if draft_assets.is_dir() && !final_assets.exists() {
+            std::fs::rename(draft_assets, final_assets)?;
+        }
+    }
     Ok(post_slug)
 }
 
@@ -965,13 +1076,25 @@ pub fn delete_post(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<(
     let page_slug = ensure_safe_slug(page_slug)?;
     let post_slug = ensure_safe_slug(post_slug)?;
     let file = post_file_of(repo, &page_slug, &post_slug)?;
-    if file.exists() {
-        std::fs::remove_file(&file)?;
-    }
     let slug_dir = file.with_extension("");
     let parent = file.parent().map(|p| p.to_path_buf());
-    if slug_dir.is_dir() && parent.as_deref() != Some(slug_dir.as_path()) {
-        std::fs::remove_dir_all(&slug_dir)?;
+    let mut moved: Vec<(PathBuf, String)> = Vec::new();
+    if file.exists() {
+        moved.push((file.clone(), repo_relative(repo, &file)?));
+    }
+    if slug_dir.is_dir() && parent.as_ref() != Some(&slug_dir) {
+        moved.push((slug_dir.clone(), repo_relative(repo, &slug_dir)?));
+    }
+    // Preserve the staged (published) asset copy too, so restore brings back
+    // covers and images with the post.
+    if let Ok(path) = resolve_in_repo(repo, &format!("assets/posts/{}/{}", page_slug, post_slug)) {
+        if path.exists() {
+            moved.push((path, format!("assets/posts/{}/{}", page_slug, post_slug)));
+        }
+    }
+    if !moved.is_empty() {
+        let refs: Vec<(&Path, &str)> = moved.iter().map(|(p, s)| (p.as_path(), s.as_str())).collect();
+        move_to_trash(repo, "post", &post_slug, &refs)?;
     }
     remove_staged_post_assets(repo, &page_slug, &post_slug);
     let _ = remove_generated(repo, &format!("devlog/{}.html", post_slug));
@@ -1193,6 +1316,222 @@ pub fn delete_media(repo: &Path, rel_path: &str) -> AppResult<()> {
     Ok(())
 }
 
+// ---------- trash (recoverable deletion) ----------
+
+#[derive(Serialize, Debug, Clone)]
+pub struct TrashEntry {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub deleted_at: String,
+    pub files: usize,
+}
+
+/// Disk path of the repo-local trash directory.
+fn trash_repo_root(repo: &Path) -> PathBuf {
+    repo.join(TRASH_DIR)
+}
+
+/// Convert an absolute path inside `repo` to its repo-relative slash string.
+fn repo_relative(repo: &Path, path: &Path) -> AppResult<String> {
+    let canon = repo
+        .canonicalize()
+        .map_err(|_| AppError::Validation("Repository path does not exist.".into()))?;
+    let rel = path
+        .strip_prefix(&canon)
+        .map_err(|_| AppError::Validation("Path is outside the repository.".into()))?;
+    Ok(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// Create a fresh (unused) trash entry directory.
+fn new_trash_entry(repo: &Path, kind: &str, name: &str) -> AppResult<PathBuf> {
+    let root = trash_repo_root(repo);
+    std::fs::create_dir_all(&root)?;
+    let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let mut n = 0usize;
+    loop {
+        let id = if n == 0 {
+            format!("{}_{}_{}", ts, kind, name)
+        } else {
+            format!("{}_{}_{}_{}", ts, kind, name, n)
+        };
+        let path = root.join(&id);
+        if !path.exists() {
+            std::fs::create_dir_all(&path)?;
+            return Ok(path);
+        }
+        n += 1;
+    }
+}
+
+/// Move `moved` sources (absolute path + repo-relative original) into a single
+/// trash entry, recording a manifest so they can be restored later. Sources
+/// that no longer exist are skipped; empty deletions create no entry.
+fn move_to_trash(repo: &Path, kind: &str, name: &str, moved: &[(&Path, &str)]) -> AppResult<()> {
+    let entry = new_trash_entry(repo, kind, name)?;
+    let mut files = Vec::new();
+    let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (src, original) in moved {
+        if !src.exists() && !src.is_symlink() {
+            continue;
+        }
+        let Some(base) = src.file_name().map(|s| s.to_string_lossy().to_string()) else {
+            continue;
+        };
+        // Multiple sources can share a base name (e.g. a post's <slug>/ assets
+        // folder and the staged assets/<slug> copy). Disambiguate the stored
+        // name; the original `to` path is recorded for restore either way.
+        let mut stored = base.clone();
+        let mut n = 2;
+        while used_names.contains(&stored) || entry.join(&stored).exists() {
+            stored = format!("{}_{}", base, n);
+            n += 1;
+        }
+        used_names.insert(stored.clone());
+        let dest = entry.join(&stored);
+        std::fs::rename(src, &dest)?;
+        files.push(serde_json::json!({ "from": stored, "to": original }));
+    }
+    if files.is_empty() {
+        let _ = std::fs::remove_dir_all(&entry);
+        return Ok(());
+    }
+    let manifest = serde_json::json!({
+        "kind": kind,
+        "name": name,
+        "deleted_at": chrono::Utc::now().to_rfc3339(),
+        "files": files,
+    });
+    let raw = serde_json::to_vec_pretty(&manifest)
+        .map_err(|e| AppError::Command(format!("Could not serialize trash manifest: {e}")))?;
+    std::fs::write(entry.join(TRASH_MANIFEST), raw)?;
+    Ok(())
+}
+
+/// A trash entry id must be an opaque folder name; reject anything that could
+/// traverse or point outside `.trash`.
+fn ensure_trash_id(id: &str) -> AppResult<()> {
+    if id.is_empty() || id == "." || id == ".." {
+        return Err(AppError::Validation(format!("Invalid trash id: {}", id)));
+    }
+    if id.contains('/') || id.contains('\\') || id.starts_with('.') {
+        return Err(AppError::Validation(format!("Invalid trash id: {}", id)));
+    }
+    Ok(())
+}
+
+/// List recoverable deletions, newest first.
+pub fn list_trash(repo: &Path) -> AppResult<Vec<TrashEntry>> {
+    let root = trash_repo_root(repo);
+    let mut out = Vec::new();
+    if !root.is_dir() {
+        return Ok(out);
+    }
+    for entry in std::fs::read_dir(&root)? {
+        let band = entry?;
+        let dir = band.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let raw = match std::fs::read_to_string(dir.join(TRASH_MANIFEST)) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let v: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let id = dir
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if id.is_empty() {
+            continue;
+        }
+        out.push(TrashEntry {
+            id,
+            kind: v["kind"].as_str().unwrap_or_default().to_string(),
+            name: v["name"].as_str().unwrap_or_default().to_string(),
+            deleted_at: v["deleted_at"].as_str().unwrap_or_default().to_string(),
+            files: v["files"].as_array().map(|a| a.len()).unwrap_or(0),
+        });
+    }
+    out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
+    Ok(out)
+}
+
+/// Restore a previously deleted item to its original location. Refuses to
+/// overwrite existing paths so a restore can never clobber new work.
+pub fn restore_deleted(repo: &Path, id: &str) -> AppResult<()> {
+    ensure_trash_id(id)?;
+    let entry = trash_repo_root(repo).join(id);
+    if !entry.is_dir() {
+        return Err(AppError::Validation(format!(
+            "Trash entry not found: {}. Run list_trash to see available restores.",
+            id
+        )));
+    }
+    let raw = std::fs::read_to_string(entry.join(TRASH_MANIFEST))
+        .map_err(|_| AppError::Validation(format!("Trash entry has no manifest: {}", id)))?;
+    let v: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| AppError::Command(format!("Could not read trash manifest: {e}")))?;
+    let files = v["files"]
+        .as_array()
+        .ok_or_else(|| AppError::Validation("Trash manifest has no files.".into()))?;
+
+    let mut plan: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for f in files {
+        let from_name = f["from"]
+            .as_str()
+            .ok_or_else(|| AppError::Validation("Trash manifest entry missing 'from'.".into()))?;
+        let to_rel = f["to"]
+            .as_str()
+            .ok_or_else(|| AppError::Validation("Trash manifest entry missing 'to'.".into()))?;
+        let from = entry.join(from_name);
+        if !from.exists() && !from.is_symlink() {
+            return Err(AppError::Validation(format!(
+                "Trash entry is missing {}; it cannot be restored.",
+                from_name
+            )));
+        }
+        let to = resolve_in_repo(repo, to_rel)?;
+        if to.exists() {
+            return Err(AppError::Validation(format!(
+                "Refusing to restore over an existing path: {}. Move or remove it first.",
+                to_rel
+            )));
+        }
+        plan.push((from, to));
+    }
+
+    for (from, to) in &plan {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(from, to)?;
+    }
+    let _ = std::fs::remove_dir_all(&entry);
+    Ok(())
+}
+
+/// Permanently delete trash contents; returns the number of entries removed.
+pub fn empty_trash(repo: &Path) -> AppResult<usize> {
+    let root = trash_repo_root(repo);
+    if !root.is_dir() {
+        return Ok(0);
+    }
+    let mut count = 0;
+    for entry in std::fs::read_dir(&root)? {
+        let band = entry?;
+        let p = band.path();
+        if p.is_dir() {
+            std::fs::remove_dir_all(&p)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 // ---------- helpers ----------
 
 pub fn slugify(value: &str) -> String {
@@ -1218,6 +1557,10 @@ pub fn slugify(value: &str) -> String {
 
 fn today_iso() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
+fn is_iso_date(value: &str) -> bool {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok()
 }
 
 /// Summary of the most recent site build, surfaced in the publish modal so the
@@ -1403,6 +1746,8 @@ mod tests {
             &root,
             &PostInput {
                 page_slug: "fluid-dynamics".to_string(),
+                original_slug: String::new(),
+                draft_asset_slug: String::new(),
                 meta: PostMeta {
                     title: "My Post".to_string(),
                     slug: "my-post".to_string(),
@@ -1431,6 +1776,8 @@ mod tests {
             &root,
             &PostInput {
                 page_slug: "fluid-dynamics".to_string(),
+                original_slug: String::new(),
+                draft_asset_slug: String::new(),
                 meta: PostMeta {
                     title: "Bad".to_string(),
                     slug: "../escape".to_string(),
@@ -1450,6 +1797,8 @@ mod tests {
             &root,
             &PostInput {
                 page_slug: "brand-new-page".to_string(),
+                original_slug: String::new(),
+                draft_asset_slug: String::new(),
                 meta: PostMeta {
                     title: "Hello".to_string(),
                     slug: "hello".to_string(),
@@ -1465,6 +1814,7 @@ mod tests {
         // the page is visible in the tree and on the published site.
         let page_dir = resolve_in_repo(&root, "content/pages/brand-new-page").unwrap();
         assert!(page_dir.join("page.yml").exists());
+        assert!(std::fs::read_to_string(page_dir.join("page.yml")).unwrap().starts_with("---\n"));
         let pages = list_pages(&root).unwrap();
         assert!(pages.iter().any(|p| p.slug == "brand-new-page"));
         std::fs::remove_dir_all(&root).ok();
@@ -1530,6 +1880,129 @@ mod tests {
     }
 
     #[test]
+    fn deletion_moves_posts_to_trash_and_back() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(posts.join("recap").join("assets")).unwrap();
+        std::fs::write(posts.join("recap.md"), "# Recap").unwrap();
+        std::fs::write(posts.join("recap").join("assets").join("pic.png"), b"png").unwrap();
+
+        delete_post(&root, "fluid-dynamics", "recap").unwrap();
+        assert!(!posts.join("recap.md").exists());
+        assert!(!posts.join("recap").exists());
+
+        let trash = list_trash(&root).unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].kind, "post");
+        assert_eq!(trash[0].name, "recap");
+        assert_eq!(trash[0].files, 2);
+
+        restore_deleted(&root, &trash[0].id).unwrap();
+        assert!(posts.join("recap.md").exists());
+        assert!(posts.join("recap").join("assets").join("pic.png").exists());
+        assert!(list_trash(&root).unwrap().is_empty());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn restore_brings_back_staged_asset_copy() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(posts.join("recap").join("assets")).unwrap();
+        std::fs::write(posts.join("recap.md"), "# Recap").unwrap();
+        std::fs::write(posts.join("recap").join("assets").join("pic.png"), b"png").unwrap();
+        let staged = resolve_in_repo(&root, "assets/posts/fluid-dynamics/recap").unwrap();
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("cover.png"), b"cover").unwrap();
+
+        delete_post(&root, "fluid-dynamics", "recap").unwrap();
+        assert!(!staged.join("cover.png").exists());
+
+        let trash = list_trash(&root).unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].files, 3); // .md + post assets dir + staged copy
+
+        restore_deleted(&root, &trash[0].id).unwrap();
+        assert!(posts.join("recap.md").exists());
+        assert!(posts.join("recap").join("assets").join("pic.png").exists());
+        assert!(staged.join("cover.png").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn deletion_moves_pages_to_trash_and_back() {
+        let root = repo();
+        create_page(
+            &root,
+            &PageInput {
+                name: "GPU Port".to_string(),
+                slug: "gpu-port".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("fluid-dynamics".to_string()),
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let sub = resolve_in_repo(&root, "content/pages/fluid-dynamics/subpages/gpu-port").unwrap();
+
+        delete_page(&root, "gpu-port").unwrap();
+        assert!(!sub.exists());
+
+        let trash = list_trash(&root).unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].kind, "page");
+
+        restore_deleted(&root, &trash[0].id).unwrap();
+        assert!(sub.join(PAGE_FILE).exists());
+        // The parent page is restored alongside (it was part of the same entry).
+        assert!(list_trash(&root).unwrap().is_empty());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn restore_refuses_to_overwrite_existing_content() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(&posts).unwrap();
+        std::fs::write(posts.join("keep.md"), "# Original").unwrap();
+
+        delete_post(&root, "fluid-dynamics", "keep").unwrap();
+        assert!(!posts.join("keep.md").exists());
+        // Re-create a new post at the same path before restoring.
+        std::fs::write(posts.join("keep.md"), "# Newer").unwrap();
+
+        let trash = list_trash(&root).unwrap();
+        assert!(restore_deleted(&root, &trash[0].id).is_err());
+        // The existing file must be untouched.
+        assert_eq!(std::fs::read_to_string(posts.join("keep.md")).unwrap(), "# Newer");
+        // The entry still holds the old content, so nothing was lost.
+        assert_eq!(list_trash(&root).unwrap().len(), 1);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn empty_trash_removes_entries_only() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(&posts).unwrap();
+        std::fs::write(posts.join("gone.md"), "# Gone").unwrap();
+        delete_post(&root, "fluid-dynamics", "gone").unwrap();
+        assert_eq!(list_trash(&root).unwrap().len(), 1);
+
+        assert_eq!(empty_trash(&root).unwrap(), 1);
+        assert!(list_trash(&root).unwrap().is_empty());
+        // Source/content tree must be untouched by emptying the trash.
+        assert!(!posts.join("gone.md").exists());
+        assert!(resolve_in_repo(&root, "content/pages/fluid-dynamics/page.yml")
+            .unwrap()
+            .exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn subpage_post_paths_are_found() {
         let root = repo();
         create_page(
@@ -1562,6 +2035,125 @@ mod tests {
         // Deleting a subpage post must reach it (and not error).
         delete_post(&root, "gpu-port", "deep").unwrap();
         assert!(!sub_posts.join("deep.md").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_post_rename_via_original_slug() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(posts.join("v1")).unwrap();
+        std::fs::write(posts.join("v1.md"), "# V1").unwrap();
+        // Rename from v1 to v2 using original_slug.
+        let slug = write_post(
+            &root,
+            &PostInput {
+                page_slug: "fluid-dynamics".to_string(),
+                original_slug: "v1".to_string(),
+                draft_asset_slug: String::new(),
+                meta: PostMeta {
+                    title: "V2".to_string(),
+                    slug: "v2".to_string(),
+                    status: "draft".to_string(),
+                    ..Default::default()
+                },
+                body: "new body".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(slug, "v2");
+        assert!(!posts.join("v1.md").exists());
+        assert!(!posts.join("v1").exists());
+        assert!(posts.join("v2.md").exists());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_post_rejects_empty_title() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(&posts).unwrap();
+        let r = write_post(
+            &root,
+            &PostInput {
+                page_slug: "fluid-dynamics".to_string(),
+                original_slug: String::new(),
+                draft_asset_slug: String::new(),
+                meta: PostMeta {
+                    title: String::new(),
+                    slug: "valid-slug".to_string(),
+                    status: "draft".to_string(),
+                    ..Default::default()
+                },
+                body: "body".to_string(),
+            },
+        );
+        assert!(r.is_err());
+        let msg = r.unwrap_err().to_string();
+        assert!(msg.contains("title"), "Expected title validation error, got: {msg}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn write_post_rejects_duplicate_slug() {
+        let root = repo();
+        let posts = resolve_in_repo(&root, "content/pages/fluid-dynamics/posts").unwrap();
+        std::fs::create_dir_all(&posts).unwrap();
+        std::fs::write(posts.join("existing.md"), "# Existing").unwrap();
+        let r = write_post(
+            &root,
+            &PostInput {
+                page_slug: "fluid-dynamics".to_string(),
+                original_slug: String::new(),
+                draft_asset_slug: String::new(),
+                meta: PostMeta {
+                    title: "Dup".to_string(),
+                    slug: "existing".to_string(),
+                    status: "draft".to_string(),
+                    ..Default::default()
+                },
+                body: "body".to_string(),
+            },
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("already exists"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn update_page_rejects_missing_slug() {
+        let root = repo();
+        let r = update_page(
+            &root,
+            &PageInput {
+                name: "Ghost".to_string(),
+                slug: "ghost-page".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: None,
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("Page not found"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn update_project_rejects_missing_slug() {
+        let root = repo();
+        let r = update_project(
+            &root,
+            &ProjectInput {
+                slug: "nope".to_string(),
+                name: "Nope".to_string(),
+                ..Default::default()
+            },
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("Project not found"));
         std::fs::remove_dir_all(&root).ok();
     }
 }

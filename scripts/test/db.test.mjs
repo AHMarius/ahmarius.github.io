@@ -44,6 +44,39 @@ test('index: schema applies cleanly and is idempotent', async () => {
   db.close();
 });
 
+test('index: on-disk caches are owner-only and reject symlink paths', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ahmarius-db-security-'));
+  const dbPath = path.join(root, 'index.sqlite');
+  try {
+    const db = openIndex(dbPath);
+    await applySchema(db);
+    db.close();
+    const mode = (await fs.stat(dbPath)).mode & 0o777;
+    assert.equal(mode, 0o600);
+
+    const link = path.join(root, 'index-link.sqlite');
+    await fs.symlink(dbPath, link);
+    assert.throws(() => openIndex(link), /symbolic link/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('index: search bounds untrusted UI input', async () => {
+  const root = await makeTempContent();
+  try {
+    const db = openIndex(':memory:');
+    await applySchema(db);
+    await rebuildIndex(db, root);
+    assert.ok(searchPosts(db, 'solver', { limit: 9999 }).length <= 100);
+    assert.deepEqual(searchPosts(db, 'solver', { limit: 0 }), []);
+    assert.equal(searchPosts(db, 'x'.repeat(1000)).length, 0);
+    db.close();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('index: rebuild imports a fresh content tree end-to-end', async () => {
   const root = await makeTempContent();
   try {

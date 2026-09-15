@@ -53,6 +53,16 @@ Canonical DDL lives in `scripts/db/schema.sql` and is applied by
   used by the "imported post is searchable" verification.
 - `PRAGMA journal_mode = WAL` and foreign keys enabled.
 
+## Local security controls
+
+The index can contain unpublished draft text, so it is treated as private
+local data. `openIndex()` refuses a symbolic-link database path and applies
+owner-only (`0600`) permissions to on-disk caches. SQLite runs with foreign
+keys, `trusted_schema=OFF`, `secure_delete=ON`, a five-second busy timeout,
+WAL journaling, and full synchronous writes. All queries use bound parameters;
+search results are capped at 100 and query text at 500 characters. Rebuilds
+are transactional: a failed read leaves the previous index intact.
+
 ## Usage from code
 
 ```js

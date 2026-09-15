@@ -6,7 +6,15 @@ pub mod export;
 pub mod git;
 pub mod import;
 pub mod lint;
+pub mod process;
 pub mod syndication;
+
+// Auto-build version: derived from the repo state at build time (build.rs).
+// Falls back to the Cargo package version when not embedded.
+pub const APP_BUILD_VERSION: &str = match option_env!("AHMARIUS_APP_VERSION") {
+    Some(v) if !v.is_empty() => v,
+    _ => env!("CARGO_PKG_VERSION"),
+};
 
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
@@ -140,6 +148,8 @@ pub struct Preferences {
     #[serde(default)]
     pub theme: Option<String>,
     #[serde(default)]
+    pub default_status: Option<String>,
+    #[serde(default)]
     pub sidebar_width: Option<f64>,
     #[serde(default)]
     pub last_editor_mode: Option<String>,
@@ -171,10 +181,15 @@ pub struct SettingsJson {
     pub giscus_repo_id: Option<String>,
     #[serde(default)]
     pub giscus_category_id: Option<String>,
+    #[serde(default)]
+    pub sync_gateway_url: Option<String>,
 }
 
 struct AppState {
     prefs: Mutex<Preferences>,
+    /// Serializes repository reads/writes so save, build and publish cannot
+    /// observe half-completed work from another command.
+    repo_ops: Mutex<()>,
     prefs_path: PathBuf,
     recovery_dir: PathBuf,
 }
@@ -196,13 +211,16 @@ fn load_prefs(path: &Path) -> Preferences {
         .unwrap_or_default()
 }
 
-fn save_prefs(prefs: &Preferences, path: &Path) {
+fn save_prefs(prefs: &Preferences, path: &Path) -> AppResult<()> {
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        std::fs::create_dir_all(dir)?;
     }
-    if let Ok(json) = serde_json::to_string_pretty(prefs) {
-        let _ = std::fs::write(path, json);
-    }
+    let json = serde_json::to_vec_pretty(prefs)
+        .map_err(|e| AppError::Command(format!("Could not serialize preferences: {e}")))?;
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
 }
 
 // ---------- Repo resolution ----------
@@ -280,6 +298,7 @@ fn with_repo<T>(
     f: impl FnOnce(&PathBuf) -> Result<T, AppError>,
 ) -> Result<T, AppError> {
     let state = app.state::<AppState>();
+    let _operation = state.repo_ops.lock().map_err(|_| AppError::Command("Repository operation lock was poisoned.".into()))?;
     let repo = repo_for(&state, fallback)?;
     f(&repo)
 }
@@ -287,19 +306,49 @@ fn with_repo<T>(
 // ---------- Commands ----------
 
 #[tauri::command]
+fn app_version() -> String {
+    APP_BUILD_VERSION.to_string()
+}
+
+#[tauri::command]
 fn get_prefs(state: tauri::State<'_, AppState>) -> Preferences {
     state.prefs.lock().unwrap().clone()
 }
 
 #[tauri::command]
-fn set_prefs(app: tauri::AppHandle, prefs: Preferences) -> Result<(), AppError> {
+fn set_prefs(app: tauri::AppHandle, prefs: serde_json::Value) -> Result<(), AppError> {
     let state = app.state::<AppState>();
-    {
-        let mut p = state.prefs.lock().unwrap();
-        *p = prefs.clone();
+    let mut p = state.prefs.lock().unwrap();
+    let existing = serde_json::to_value(p.clone())
+        .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+    let merged = merge_prefs(existing, prefs);
+    let new_prefs: Preferences = serde_json::from_value(merged).map_err(|e| {
+        AppError::Command(format!("Invalid preferences payload: {e}"))
+    })?;
+    *p = new_prefs.clone();
+    drop(p);
+    save_prefs(&new_prefs, &state.prefs_path)
+}
+
+/// Deep-merge `incoming` over `existing` so fields the settings form does not
+/// render (window state, sidebar width, editor mode, …) are never dropped.
+/// A `null` value in `incoming` clears the key; absent keys are preserved.
+fn merge_prefs(existing: serde_json::Value, incoming: serde_json::Value) -> serde_json::Value {
+    match (existing, incoming) {
+        (serde_json::Value::Object(mut base), serde_json::Value::Object(over)) => {
+            for (k, v) in over {
+                if v.is_null() {
+                    base.remove(&k);
+                } else if let Some(cur) = base.get(&k).cloned() {
+                    base.insert(k, merge_prefs(cur, v));
+                } else {
+                    base.insert(k, v);
+                }
+            }
+            serde_json::Value::Object(base)
+        }
+        (_, incoming) => incoming,
     }
-    save_prefs(&prefs, &state.prefs_path);
-    Ok(())
 }
 
 // ---------- Recovery (autosave / crash recovery) ----------
@@ -324,7 +373,12 @@ fn recovery_snapshot_path(state: &AppState, key: &str) -> PathBuf {
 }
 
 #[tauri::command]
-fn save_recovery(app: tauri::AppHandle, key: String, content: String) -> Result<(), AppError> {
+fn save_recovery(
+    app: tauri::AppHandle,
+    key: String,
+    content: String,
+    metadata: Option<serde_json::Value>,
+) -> Result<(), AppError> {
     let state = app.state::<AppState>();
     let path = recovery_snapshot_path(&state, &key);
     if let Some(dir) = path.parent() {
@@ -334,13 +388,16 @@ fn save_recovery(app: tauri::AppHandle, key: String, content: String) -> Result<
         "key": key,
         "saved_at": chrono::Local::now().to_rfc3339(),
         "content": content,
+        "metadata": metadata.unwrap_or(serde_json::Value::Null),
     });
-    std::fs::write(&path, serde_json::to_vec(&entry).unwrap_or_default())?;
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    std::fs::write(&tmp, serde_json::to_vec(&entry).map_err(|e| AppError::Command(e.to_string()))?)?;
+    std::fs::rename(tmp, path)?;
     Ok(())
 }
 
 #[tauri::command]
-fn load_recovery(app: tauri::AppHandle, key: String) -> Result<Option<String>, AppError> {
+fn load_recovery(app: tauri::AppHandle, key: String) -> Result<Option<serde_json::Value>, AppError> {
     let state = app.state::<AppState>();
     let path = recovery_snapshot_path(&state, &key);
     if !path.exists() {
@@ -348,7 +405,11 @@ fn load_recovery(app: tauri::AppHandle, key: String) -> Result<Option<String>, A
     }
     let raw = std::fs::read_to_string(&path)?;
     let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| AppError::Command(e.to_string()))?;
-    Ok(v.get("content").and_then(|c| c.as_str()).map(|s| s.to_string()))
+    if v.get("content").and_then(|c| c.as_str()).is_some() {
+        Ok(Some(v))
+    } else {
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -610,6 +671,21 @@ fn delete_media(app: tauri::AppHandle, rel_path: String) -> Result<(), AppError>
 }
 
 #[tauri::command]
+fn list_trash(app: tauri::AppHandle) -> Result<Vec<content::TrashEntry>, AppError> {
+    with_repo(&app, None, |repo| content::list_trash(repo))
+}
+
+#[tauri::command]
+fn restore_deleted(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| content::restore_deleted(repo, &id))
+}
+
+#[tauri::command]
+fn empty_trash(app: tauri::AppHandle) -> Result<usize, AppError> {
+    with_repo(&app, None, |repo| content::empty_trash(repo))
+}
+
+#[tauri::command]
 fn build_site(app: tauri::AppHandle, mode: Option<String>) -> Result<build::BuildResult, AppError> {
     let state = app.state::<AppState>();
     let prefs = state.prefs.lock().unwrap();
@@ -617,7 +693,18 @@ fn build_site(app: tauri::AppHandle, mode: Option<String>) -> Result<build::Buil
     let settings = prefs.settings.clone();
     drop(prefs);
     let mode = mode.unwrap_or(default_mode);
-    with_repo(&app, None, |repo| build::build_site(repo, &mode, settings.as_ref()))
+    // Resolve the repo (and briefly serialize the studio-config write) without
+    // holding repo_ops for the whole (up to 10 min) npm build — otherwise
+    // autosaves and every repo command would block for the entire build.
+    let repo = {
+        let _operation = state.repo_ops.lock().map_err(|_| AppError::Command("Repository operation lock was poisoned.".into()))?;
+        let repo = repo_for(&state, None)?;
+        if let Some(settings) = settings.as_ref() {
+            build::write_studio_config(&repo, settings)?;
+        }
+        repo
+    };
+    build::build_site(&repo, &mode, None)
 }
 
 #[tauri::command]
@@ -749,6 +836,11 @@ fn git_commit(app: tauri::AppHandle, message: String) -> Result<String, AppError
 }
 
 #[tauri::command]
+fn git_unstage(app: tauri::AppHandle, paths: Option<Vec<String>>) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| git::git_unstage(repo, &paths.unwrap_or_default()))
+}
+
+#[tauri::command]
 fn git_push(app: tauri::AppHandle, branch: String) -> Result<String, AppError> {
     with_repo(&app, None, |repo| git::git_push(repo, &branch))
 }
@@ -792,8 +884,6 @@ fn check_repo(repo_path: String) -> Result<serde_json::Value, AppError> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -807,6 +897,7 @@ pub fn run() {
             app.manage(AppState {
                 recovery_dir,
                 prefs: Mutex::new(prefs),
+                repo_ops: Mutex::new(()),
                 prefs_path: path,
             });
 
@@ -856,7 +947,7 @@ pub fn run() {
                     ws.maximized = window.is_maximized().unwrap_or(false);
                     let snap = p.clone();
                     drop(p);
-                    save_prefs(&snap, &state.prefs_path);
+                    let _ = save_prefs(&snap, &state.prefs_path);
                 }
                 WindowEvent::CloseRequested { .. } => {
                     let mut p = state.prefs.lock().unwrap();
@@ -870,13 +961,14 @@ pub fn run() {
                     ws.maximized = window.is_maximized().unwrap_or(false);
                     let snap = p.clone();
                     drop(p);
-                    save_prefs(&snap, &state.prefs_path);
+                    let _ = save_prefs(&snap, &state.prefs_path);
                 }
                 _ => {}
             }
             let _ = app;
         })
         .invoke_handler(tauri::generate_handler![
+            app_version,
             get_prefs,
             set_prefs,
             save_recovery,
@@ -907,6 +999,9 @@ pub fn run() {
             read_repo_file,
             scan_media,
             delete_media,
+            list_trash,
+            restore_deleted,
+            empty_trash,
             build_site,
             git_status,
             git_diff_summary,
@@ -914,6 +1009,7 @@ pub fn run() {
             git_log,
             git_stage_paths,
             git_commit,
+            git_unstage,
             git_push,
             git_pull,
             git_last_commit,

@@ -1,9 +1,12 @@
 import { ContentNode, PostDoc } from "./api";
 import { Editor } from "./editor";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { checkSyncGateway, claimPhonePairing, createPhonePairing, listSyncFiles, readSyncFile, writeSyncFile, type SyncSession } from "./sync";
 import "./app.css";
 
 type View =
+  | { kind: "dashboard" }
+  | { kind: "sync" }
   | { kind: "pages" }
   | { kind: "projects" }
   | { kind: "allposts" }
@@ -12,19 +15,22 @@ type View =
   | { kind: "settings" };
 
 const state = {
-  view: { kind: "pages" } as View,
+  view: { kind: "dashboard" } as View,
   tree: [] as ContentNode[],
   posts: [] as any[],
   projects: [] as any[],
   prefs: {} as any,
   editor: null as Editor | null,
-  editorSave: undefined as (() => Promise<any>) | undefined,
+  editorSave: undefined as (() => Promise<boolean>) | undefined,
+  editorOriginalSlug: "" as string,
+  editorAssetSlug: "" as string,
   editorDirty: false,
   status: "Idle" as string,
   saving: false as boolean,
   editorKey: "" as string,
   autosaveTimer: 0 as any,
   collapsed: new Set<string>(),
+  syncSession: null as SyncSession | null,
 };
 
 const $ = (sel: string, root: HTMLElement | Document = document): any =>
@@ -58,6 +64,27 @@ function setStatus(text: string) {
   const s = $("#topbar-status");
   if (s) s.textContent = text;
   state.editor?.setStatus(state.editorDirty ? "Unsaved changes" : text);
+}
+
+/** True while the post editor is on screen and usable (not a stale closure
+ * left behind after navigating away). */
+function editorActive(): boolean {
+  return state.view.kind === "post" && Boolean($("#po-title")) && Boolean(state.editorSave);
+}
+
+/** Drop the editor bindings when leaving the post editor, so a later publish
+ * / preview / Ctrl+S can't invoke a stale save closure against removed DOM. */
+function resetEditorState() {
+  state.editorSave = undefined;
+  state.editorOriginalSlug = "";
+  state.editorAssetSlug = "";
+  state.editorDirty = false;
+  state.editorKey = "";
+  if (state.autosaveTimer) {
+    clearTimeout(state.autosaveTimer);
+    state.autosaveTimer = 0;
+  }
+  newPostSessionId = "";
 }
 
 // ---------- Fire Tauri or fall back for browser dev ----------
@@ -195,9 +222,39 @@ function scheduleAutosave() {
   window.clearTimeout(state.autosaveTimer);
   state.autosaveTimer = window.setTimeout(async () => {
     await cell(() =>
-      call("save_recovery", { key: state.editorKey, content: state.editor!.getValue() }),
+      call("save_recovery", {
+        key: state.editorKey,
+        content: state.editor!.getValue(),
+        metadata: recoveryMetadata(),
+      }),
     );
   }, 1200);
+}
+
+function recoveryMetadata() {
+  const value = (id: string) => (($(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? "");
+  const featured = $("#po-featured") as HTMLInputElement | null;
+  return {
+    title: value("#po-title"), slug: value("#po-slug"), status: value("#po-status"), date: value("#po-date"),
+    subtitle: value("#po-subtitle"), cover: value("#po-cover"), excerpt: value("#po-excerpt"), tags: value("#po-tags"),
+    technologies: value("#po-tech"), project: value("#po-project"), series: value("#po-series"), part: value("#po-part"),
+    featured: Boolean(featured?.checked),
+  };
+}
+
+function restoreRecoveryMetadata(metadata: any) {
+  if (!metadata || typeof metadata !== "object") return;
+  const set = (id: string, value: any) => {
+    const node = $(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+    if (node && value != null) node.value = String(value);
+  };
+  set("#po-title", metadata.title); set("#po-slug", metadata.slug); set("#po-status", metadata.status);
+  set("#po-date", metadata.date); set("#po-subtitle", metadata.subtitle); set("#po-cover", metadata.cover);
+  set("#po-excerpt", metadata.excerpt); set("#po-tags", metadata.tags); set("#po-tech", metadata.technologies);
+  set("#po-project", metadata.project); set("#po-series", metadata.series); set("#po-part", metadata.part);
+  const featured = $("#po-featured") as HTMLInputElement | null;
+  if (featured && typeof metadata.featured === "boolean") featured.checked = metadata.featured;
+  updateSeriesChip();
 }
 
 async function checkRecovery(page: string, slug: string) {
@@ -206,7 +263,9 @@ async function checkRecovery(page: string, slug: string) {
   const saved = await cell(() => call("load_recovery", { key }));
   if (saved == null) return;
   // Only offer recovery if it differs from what's on disk.
-  if (state.editor && saved === state.editor.getValue()) return;
+  const content = typeof saved === "string" ? saved : saved?.content;
+  if (typeof content !== "string") return;
+  if (state.editor && content === state.editor.getValue()) return;
   const host = $("#pe-recovery");
   if (!host) return;
   host.innerHTML = "";
@@ -220,7 +279,8 @@ async function checkRecovery(page: string, slug: string) {
     </span>`;
   host.appendChild(bar);
   $("#rec-restore")!.addEventListener("click", () => {
-    state.editor!.setBody(saved);
+    state.editor!.setBody(content);
+    restoreRecoveryMetadata(typeof saved === "string" ? null : saved.metadata);
     state.editorDirty = true;
     state.editor!.setStatus("Restored unsaved draft");
     bar.remove();
@@ -271,6 +331,8 @@ app.innerHTML = `
         <span class="brand-name">AH Marius Content Studio</span>
       </div>
       <nav class="topnav2">
+        <button data-nav="dashboard">Dashboard</button>
+        <button data-nav="sync">Phone Sync</button>
         <button data-nav="pages">Pages</button>
         <button data-nav="projects">Projects</button>
         <button data-nav="allposts">All Posts</button>
@@ -349,6 +411,7 @@ function renderSidebar() {
 const viewContent = () => $("#view-content")!;
 
 function showPagesView() {
+  resetEditorState();
   state.view = { kind: "pages" };
   const v = viewContent();
   v.innerHTML = "";
@@ -388,6 +451,177 @@ function showPagesView() {
 
 function isDevlogPage(node: ContentNode) {
   return node.kind === "devlog";
+}
+
+// ---------- Remote phone sync editor ----------
+function syncGatewayUrl(): string {
+  return String(state.prefs?.settings?.sync_gateway_url || "").trim();
+}
+
+function showSyncView() {
+  resetEditorState();
+  state.view = { kind: "sync" };
+  const v = viewContent();
+  const gateway = syncGatewayUrl();
+  if (!gateway || !state.syncSession) {
+    v.innerHTML = `
+      <h1 class="page-title">Phone Sync</h1>
+      <div class="card sync-card">
+        <h2>Pair this session</h2>
+        <p class="muted">On your laptop, open Settings → Phone sync and create a one-time pairing code. The code expires in 10 minutes and no GitHub token is stored on this device.</p>
+        <label>Sync gateway URL <input id="sync-gateway" value="${esc(gateway)}" placeholder="https://content-sync.example.workers.dev" /></label>
+        <label>Pairing code <input id="sync-code" autocomplete="one-time-code" placeholder="ABC123…" /></label>
+        <div class="card-actions"><button id="sync-connect" class="btn primary">Pair and open editor</button></div>
+        <p id="sync-message" class="muted"></p>
+      </div>`;
+    $("#sync-connect", v)!.addEventListener("click", async () => {
+      const url = ($("#sync-gateway", v) as HTMLInputElement).value.trim();
+      const code = ($("#sync-code", v) as HTMLInputElement).value.trim();
+      const message = $("#sync-message", v) as HTMLElement;
+      try {
+        state.syncSession = await claimPhonePairing(url, code);
+        state.prefs = { ...state.prefs, settings: { ...state.prefs?.settings, sync_gateway_url: url } };
+        await call("set_prefs", { prefs: state.prefs });
+        showSyncView();
+      } catch (error) {
+        message.textContent = String((error as any).message || error);
+        message.className = "error-text";
+      }
+    });
+    return;
+  }
+  v.innerHTML = `<h1 class="page-title">Phone Sync</h1><p class="muted">Loading canonical content files…</p>`;
+  void cell(async () => {
+    const editable = (await listSyncFiles(gateway, state.syncSession!.token))
+      .filter((file) => /\.(?:md|ya?ml|json)$/i.test(file.path))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    if (state.view.kind !== "sync") return;
+    v.innerHTML = `
+      <h1 class="page-title">Phone Sync <button id="sync-disconnect" class="btn">End session</button></h1>
+      <p class="muted">Edits commit directly to the configured GitHub branch. A conflicting remote edit is never overwritten silently.</p>
+      <div class="sync-editor-layout">
+        <div class="sync-file-list">${editable.map((file) => `<button class="sync-file" data-sync-file="${esc(file.path)}">${esc(file.path.replace(/^content\//, ""))}</button>`).join("") || '<p class="muted">No editable content found.</p>'}</div>
+        <div id="sync-document" class="sync-document"><p class="muted">Choose a content file to edit.</p></div>
+      </div>`;
+    $("#sync-disconnect", v)!.addEventListener("click", () => {
+      state.syncSession = null;
+      showSyncView();
+    });
+    $$('[data-sync-file]', v).forEach((button) => {
+      button.addEventListener("click", () => void openSyncFile((button as HTMLElement).dataset.syncFile!));
+    });
+  });
+}
+
+async function openSyncFile(path: string) {
+  const host = $("#sync-document") as HTMLElement | null;
+  if (!host || !state.syncSession) return;
+  host.innerHTML = `<p class="muted">Loading ${esc(path)}…</p>`;
+  try {
+    const doc = await readSyncFile(syncGatewayUrl(), state.syncSession.token, path);
+    host.innerHTML = `<label class="sync-file-title">${esc(path)}<textarea id="sync-body" rows="24" spellcheck="true"></textarea></label><div class="card-actions"><button id="sync-save" class="btn primary">Save to GitHub</button></div><p id="sync-save-msg" class="muted"></p>`;
+    const body = $("#sync-body", host) as HTMLTextAreaElement;
+    body.value = doc.content;
+    $("#sync-save", host)!.addEventListener("click", async () => {
+      const message = $("#sync-save-msg", host) as HTMLElement;
+      try {
+        const saved = await writeSyncFile(syncGatewayUrl(), state.syncSession!.token, path, doc.sha, body.value);
+        doc.sha = saved.sha;
+        message.textContent = "Saved to GitHub. Pages will publish after the workflow completes.";
+        message.className = "success-text";
+      } catch (error) {
+        message.textContent = String((error as any).message || error);
+        message.className = "error-text";
+      }
+    });
+  } catch (error) {
+    host.innerHTML = `<p class="error-text">${esc(String((error as any).message || error))}</p>`;
+  }
+}
+
+// ---------- Dashboard ----------
+function showDashboard() {
+  resetEditorState();
+  state.view = { kind: "dashboard" };
+  const v = viewContent();
+  v.innerHTML = `<h1 class="page-title">Dashboard</h1><p class="muted">Loading your content workspace…</p>`;
+  void cell(async () => {
+    const [posts, git, recoveries, trash] = await Promise.all([
+      call("list_posts").catch(() => []),
+      call("git_status").catch(() => null),
+      call("list_recovery").catch(() => []),
+      call("list_trash").catch(() => []),
+    ]);
+    if (state.view.kind !== "dashboard") return;
+    state.posts = posts || [];
+    const total = state.posts.length;
+    const published = state.posts.filter((post: any) => post.status === "published").length;
+    const drafts = total - published;
+    const changed = [
+      ...(git?.unstaged || []),
+      ...(git?.untracked || []).map((path: string) => ({ path, status: "added" })),
+    ];
+    const deleted = (git?.unstaged || []).filter((file: any) => file.status === "deleted").length;
+    v.innerHTML = `
+      <h1 class="page-title">Dashboard</h1>
+      <div class="dashboard-stats">
+        <article class="card dashboard-stat"><span class="muted">Posts</span><strong>${total}</strong><span>${published} published · ${drafts} draft${drafts === 1 ? "" : "s"}</span></article>
+        <article class="card dashboard-stat"><span class="muted">Pages</span><strong>${state.tree.length}</strong><span>Organize writing hubs</span></article>
+        <article class="card dashboard-stat"><span class="muted">Changes ready</span><strong>${changed.length}</strong><span>${deleted ? `${deleted} deletion${deleted === 1 ? "" : "s"} included` : "Nothing deleted"}</span></article>
+        <article class="card dashboard-stat"><span class="muted">Safety net</span><strong>${recoveries.length + trash.length}</strong><span>${recoveries.length} draft recovery · ${trash.length} deleted item${trash.length === 1 ? "" : "s"}</span></article>
+      </div>
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><h2>Next actions</h2></div>
+        <div class="card-actions">
+          <button id="dash-new-post" class="btn primary">+ New post</button>
+          <button id="dash-all-posts" class="btn">Review posts</button>
+          <button id="dash-publish" class="btn publish">Publish changes</button>
+          ${recoveries.length ? '<button id="dash-recovery" class="btn">Recover drafts</button>' : ""}
+        </div>
+        <p class="muted dashboard-sync">${git ? `Branch ${esc(git.branch)} · ${git.ahead || 0} ahead · ${git.behind || 0} behind` : "Git status is unavailable. Check the repository path in Settings."}</p>
+      </section>
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><h2>Unpublished changes</h2><span class="muted">Only content and generated site output are staged when you publish.</span></div>
+        <div class="rows">${changed.length
+          ? changed.slice(0, 12).map((file: any) => `<div class="row"><div class="row-main"><strong>${esc(file.path)}</strong><span class="pill ${esc(file.status)}">${esc(file.status)}</span></div></div>`).join("")
+          : '<div class="empty-state compact"><h3>Everything is up to date</h3><p>Save an edit or create a post to prepare your next publish.</p></div>'
+        }${changed.length > 12 ? `<p class="muted">${changed.length - 12} more change(s) will be reviewed when you publish.</p>` : ""}</div>
+      </section>
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><h2>Recently deleted</h2><span class="muted">Restore before publishing if you removed something by mistake.</span></div>
+        <div id="dash-trash" class="rows">${trash.length
+          ? trash.slice(0, 8).map((item: any) => `<div class="row"><div class="row-main"><strong>${esc(item.name)}</strong><span class="pill archived">${esc(item.kind)}</span><span class="muted">${esc(item.deleted_at)}</span></div><div class="row-actions"><button class="btn" data-restore-trash="${esc(item.id)}">Restore</button></div></div>`).join("")
+          : '<div class="empty-state compact"><h3>No deleted items</h3><p>Deleted content stays here until you empty the trash.</p></div>'
+        }</div>${trash.length ? '<div class="card-actions dashboard-trash-actions"><button id="dash-empty-trash" class="btn danger">Empty trash</button></div>' : ""}
+      </section>`;
+    $("#dash-new-post", v)!.addEventListener("click", () => openPostEditor(promptPageForPost(), null));
+    $("#dash-all-posts", v)!.addEventListener("click", showAllPostsView);
+    $("#dash-publish", v)!.addEventListener("click", openPublish);
+    $("#dash-recovery", v)?.addEventListener("click", openRecoveryDashboard);
+    $("#dash-empty-trash", v)?.addEventListener("click", async () => {
+      if (!(await confirmDialog("Empty deleted items?", "This permanently removes all items in the dashboard trash. Published site files are not changed until you publish.", "Empty trash"))) return;
+      try {
+        await call("empty_trash");
+        setStatus("Deleted items permanently removed from the dashboard trash");
+        showDashboard();
+      } catch (error) {
+        setStatus(`Could not empty trash: ${String((error as any).message || error)}`);
+      }
+    });
+    $$('[data-restore-trash]', v).forEach((button) => {
+      button.addEventListener("click", async () => {
+        const id = (button as HTMLElement).dataset.restoreTrash!;
+        try {
+          await call("restore_deleted", { id });
+          setStatus("Deleted content restored");
+          await refreshTree();
+          showDashboard();
+        } catch (error) {
+          setStatus(`Could not restore content: ${String((error as any).message || error)}`);
+        }
+      });
+    });
+  });
 }
 
 // ---------- Projects ----------
@@ -469,6 +703,7 @@ function wireCoverField(
 }
 
 function showProjectsView() {
+  resetEditorState();
   state.view = { kind: "projects" };
   const v = viewContent();
   v.innerHTML = "";
@@ -547,6 +782,7 @@ function showProjectsView() {
 }
 
 function showProjectView(slug: string) {
+  resetEditorState();
   state.view = { kind: "page", slug };
   const v = viewContent();
   v.innerHTML = "";
@@ -619,6 +855,7 @@ function showProjectView(slug: string) {
 }
 
 function openProjectEditor(slug?: string | null) {
+  resetEditorState();
   state.view = { kind: "page", slug: slug || "" };
   const v = viewContent();
   v.innerHTML = "";
@@ -656,6 +893,7 @@ function openProjectEditor(slug?: string | null) {
       const doc = await call("read_project", { slug });
       ($("#pr-name") as HTMLInputElement).value = doc?.name || "";
       ($("#pr-slug") as HTMLInputElement).value = doc?.slug || "";
+      ($("#pr-slug") as HTMLInputElement).readOnly = true;
       ($("#pr-repo-url") as HTMLInputElement).value = doc?.repo_url || "";
       ($("#pr-live-url") as HTMLInputElement).value = doc?.live_url || "";
       ($("#pr-status") as HTMLSelectElement).value = doc?.status || "active";
@@ -694,6 +932,7 @@ function openProjectEditor(slug?: string | null) {
 const ap = { q: "", status: "", page: "", tag: "", sort: "updated-desc" };
 
 function showAllPostsView() {
+  resetEditorState();
   state.view = { kind: "allposts" };
   const v = viewContent();
   v.innerHTML = "";
@@ -935,9 +1174,12 @@ async function deletePage(slug: string) {
     "This removes the page folder and all its posts from your content. This cannot be undone locally.",
   );
   if (!yes) return;
-  await cell(async () => {
+  try {
     await call("delete_page", { slug });
-  });
+  } catch (error) {
+    setStatus(`Could not delete page: ${String((error as any).message || error)}`);
+    return;
+  }
   setStatus(`Deleted page ${slug}`);
   await refreshTree();
   showPagesView();
@@ -949,9 +1191,12 @@ async function deletePost(page: string, slug: string) {
     `This deletes the post from the "${page}" page. This cannot be undone locally.`,
   );
   if (!yes) return;
-  await cell(async () => {
+  try {
     await call("delete_post", { pageSlug: page, postSlug: slug });
-  });
+  } catch (error) {
+    setStatus(`Could not delete post: ${String((error as any).message || error)}`);
+    return;
+  }
   setStatus(`Deleted post ${slug}`);
   await refreshTree();
   if (state.view.kind === "page" && state.view.slug === page) showPageView(page);
@@ -961,6 +1206,7 @@ async function deletePost(page: string, slug: string) {
 }
 
 async function showPageView(slug: string) {
+  resetEditorState();
   state.view = { kind: "page", slug };
   const v = viewContent();
   v.innerHTML = "";
@@ -1047,6 +1293,7 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
       const doc = await call("read_page", { slug });
       ($("#pe-name") as HTMLInputElement).value = doc?.name || "";
       ($("#pe-slug") as HTMLInputElement).value = doc?.slug || "";
+      ($("#pe-slug") as HTMLInputElement).readOnly = true;
       ($("#pe-desc") as HTMLTextAreaElement).value = doc?.description || "";
       ($("#pe-cover") as HTMLInputElement).value = doc?.cover || "";
       await showCoverPreview(
@@ -1070,8 +1317,9 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     const orderVal = Number.isNaN(orderRaw) ? null : orderRaw;
     const kind = ($("#pe-kind") as HTMLSelectElement).value;
     const devlogRepo = ($("#pe-devlog-repo") as HTMLInputElement).value.trim();
-    await cell(() =>
-      call(slug ? "update_page" : "create_page", {
+    try {
+      if (!name) throw new Error("Page name must not be empty.");
+      await call(slug ? "update_page" : "create_page", {
         page: {
           name,
           slug: sl,
@@ -1082,12 +1330,14 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
           kind,
           devlog_repo: devlogRepo,
         },
-      }),
-    );
-    setStatus(slug ? `Saved page ${sl}` : `Created page ${sl}`);
-    await refreshTree();
-    if (slug) showPageView(sl);
-    else showPagesView();
+      });
+      setStatus(slug ? `Saved page ${sl}` : `Created page ${sl}`);
+      await refreshTree();
+      if (slug) showPageView(sl);
+      else showPagesView();
+    } catch (err) {
+      setStatus(String((err as any).message || err));
+    }
   });
 }
 
@@ -1118,7 +1368,7 @@ const openEditor = (page: string) => {
 
 function targetSlugFor(): string {
   const input = $("#po-slug") as HTMLInputElement;
-  return (input?.value || "").trim() || "new-post";
+  return (input?.value || "").trim() || `draft-${newPostSessionId || "new-post"}`;
 }
 
 async function pickAndInsertImage(page: string): Promise<string | null> {
@@ -1137,7 +1387,7 @@ async function importFileIntoCurrent(page: string, path: string, insert: boolean
   const res = await cell(() =>
     call("import_asset", {
       pageSlug: page,
-      postSlug: targetSlugFor(),
+      postSlug: state.editorAssetSlug || targetSlugFor(),
       sourcePath: path,
       originalName: name,
     }),
@@ -1152,7 +1402,7 @@ async function importPastedImage(page: string, name: string, data: ArrayBuffer):
   const res = await cell(() =>
     call("import_asset_bytes", {
       pageSlug: page,
-      postSlug: targetSlugFor(),
+      postSlug: state.editorAssetSlug || targetSlugFor(),
       fileName: name || "pasted-image.png",
       data: bytes,
     }),
@@ -1166,7 +1416,7 @@ async function takeScreenshot(page: string) {
     return;
   }
   const res = await cell(() =>
-    call("capture_screenshot", { pageSlug: page, postSlug: targetSlugFor() }),
+    call("capture_screenshot", { pageSlug: page, postSlug: state.editorAssetSlug || targetSlugFor() }),
   );
   if (res?.rel_path) {
     state.editor?.insertAssetMarkdown(res.rel_path);
@@ -1217,6 +1467,8 @@ function openPostEditor(page: string, post: PostDoc | null) {
   state.view = { kind: "post", page, slug: post?.slug || "" };
   newPostSessionId = post ? "" : sessionId();
   state.editorKey = recoveryKey(page, post?.slug || "");
+  state.editorOriginalSlug = post?.slug || "";
+  state.editorAssetSlug = post?.slug || `draft-${newPostSessionId}`;
   const v = viewContent();
   v.innerHTML = "";
   v.appendChild(el("h1", "page-title", post ? "Edit Post" : "New Post"));
@@ -1228,7 +1480,7 @@ function openPostEditor(page: string, post: PostDoc | null) {
     <div class="prop-grid">
       <label>Title <input id="po-title" required /></label>
       <label>Slug <input id="po-slug" /></label>
-      <label>Status <select id="po-status"><option>draft</option><option>published</option><option>archived</option></select></label>
+      <label>Status <select id="po-status"><option>draft</option><option>published</option></select></label>
       <label>Page <input id="po-page" value="${esc(page)}" readonly /></label>
       <label>Date <input id="po-date" type="date" /></label>
       <label>Subtitle <input id="po-subtitle" /></label>
@@ -1261,9 +1513,7 @@ function openPostEditor(page: string, post: PostDoc | null) {
     "po-cover-preview",
     () => ({
       page,
-      slug:
-        ($("#po-slug") as HTMLInputElement).value.trim() ||
-        slugify(($("#po-title") as HTMLInputElement).value.trim()),
+      slug: state.editorAssetSlug || targetSlugFor(),
     }),
   );
   if (post) {
@@ -1304,6 +1554,18 @@ function openPostEditor(page: string, post: PostDoc | null) {
   updateSeriesChip();
   $("#po-series")!.addEventListener("input", updateSeriesChip);
   $("#po-part")!.addEventListener("input", updateSeriesChip);
+  $$(".props-panel input, .props-panel textarea, .props-panel select", v).forEach((field) => {
+    field.addEventListener("input", () => {
+      state.editorDirty = true;
+      state.editor?.setStatus("Unsaved changes");
+      scheduleAutosave();
+    });
+    field.addEventListener("change", () => {
+      state.editorDirty = true;
+      state.editor?.setStatus("Unsaved changes");
+      scheduleAutosave();
+    });
+  });
   $("#shot-btn")!.onclick = () => cell(() => takeScreenshot(page));
   $("#pull-commits-btn")!.onclick = () => cell(() => pullCommits(page));
   $("#export-btn")!.onclick = () => cell(async () => {
@@ -1355,7 +1617,8 @@ function populateProjectSelect() {
 
 function bindPostSave(page: string) {
   const save = async () => {
-    if (state.saving) return;
+    if (state.saving) return false;
+    if (!editorActive()) return false;
     state.saving = true;
     const meta = {
       title: ($("#po-title") as HTMLInputElement).value.trim(),
@@ -1375,24 +1638,38 @@ function bindPostSave(page: string) {
       technologies: splitChips(($("#po-tech") as HTMLInputElement).value),
     };
     try {
-      const savedSlug = await call("write_post", { input: { page_slug: page, meta, body: state.editor!.getValue() } });
+      if (!meta.title) throw new Error("Post title must not be empty.");
+      const savedSlug = await call("write_post", { input: {
+        page_slug: page, original_slug: state.editorOriginalSlug,
+        draft_asset_slug: state.editorOriginalSlug ? "" : (state.editorAssetSlug || targetSlugFor()), meta, body: state.editor!.getValue(),
+      } });
       // Success: clear autosave recovery for this post, then switch the draft key
       // from the placeholder to the real slug so later autosaves are keyed correctly.
       const oldKey = state.editorKey;
+      const assetFrom = state.editorAssetSlug || targetSlugFor();
       state.editorKey = recoveryKey(page, String(savedSlug || meta.slug));
+      state.editorOriginalSlug = String(savedSlug || meta.slug);
+      state.editorAssetSlug = String(savedSlug || meta.slug);
       await cell(() => call("clear_recovery", { key: oldKey }));
       for (const k of pendingClearKeys) {
         await cell(() => call("clear_recovery", { key: k }));
       }
       pendingClearKeys = [];
-      setStatus(`Saved draft: ${meta.title}`);
+      const cover = $("#po-cover") as HTMLInputElement | null;
+      if (cover) cover.value = meta.cover.replace(
+        `assets/posts/${page}/${assetFrom}/`, `assets/posts/${page}/${savedSlug}/`,
+      );
+      state.editorDirty = false;
+      setStatus(`Saved: ${meta.title}`);
       await refreshTree();
+      state.editor?.setStatus("Saved");
+      return true;
     } catch (e) {
       setStatus(String((e as any).message || e));
+      state.editor?.setStatus("Save failed — changes remain unsaved");
+      return false;
     } finally {
       state.saving = false;
-      state.editorDirty = false;
-      state.editor?.setStatus("Saved");
     }
   };
   state.editorSave = save;
@@ -1412,7 +1689,8 @@ async function showPostView(page: string, slug: string) {
 
 async function doPreview() {
   await cell(async () => {
-    if (state.editorSave) await state.editorSave();
+    if (!editorActive()) return;
+    if (state.editorSave && !(await state.editorSave())) return;
     const mode = state.prefs?.publish_mode === "publish" ? "publish" : "preview";
     if (mode === "publish") {
       // Publish-mode build: exact production output (drafts hidden).
@@ -1438,7 +1716,7 @@ function installShortcuts() {
     const key = e.key.toLowerCase();
     if (mod && key === "s") {
       e.preventDefault();
-      if (state.editorSave) void cell(state.editorSave);
+      if (state.editorSave && editorActive()) void cell(state.editorSave);
       return;
     }
     if (mod && e.shiftKey && key === "p") {
@@ -1526,6 +1804,10 @@ function openPublish() {
   $("#pub-cancel", overlay)!.onclick = () => overlay.remove();
 
   cell(async () => {
+    if (state.editorSave && editorActive() && state.editorDirty && !(await state.editorSave())) {
+      body.innerHTML = `<p class="error-text">Save the current editor changes before publishing.</p>`;
+      return;
+    }
     let st;
     try {
       st = await call("git_status");
@@ -1536,6 +1818,27 @@ function openPublish() {
     }
     if (!st) {
       body.innerHTML = `<p class="error-text">Could not read Git status. Open Settings to set the repository path.</p>`;
+      return;
+    }
+    if (st.staged?.length) {
+      body.innerHTML = `<p class="error-text">Publishing is blocked because the Git index already contains staged files.</p>
+        <p class="muted">The studio only stages files it has just validated. Unstage these to continue (e.g. if a previous publish was interrupted):</p>
+        <pre class="diffbox">${esc(st.staged.map((f: any) => f.path).join("\n"))}</pre>
+        <div class="modal-actions">
+          <button id="pub-unstage" class="btn">Unstage all</button>
+          <button id="pub-cancel-staged" class="btn">Cancel</button>
+        </div>`;
+      $("#pub-cancel-staged", overlay)!.onclick = () => overlay.remove();
+      $("#pub-unstage", overlay)!.onclick = async () => {
+        try {
+          await cell(() => call("git_unstage", { paths: [] }));
+          body.innerHTML = `<p class="muted">Unstaged. Re-checking…</p>`;
+          overlay.remove();
+          openPublish();
+        } catch (e) {
+          body.innerHTML = `<p class="error-text">Could not unstage.</p><pre class="diffbox">${esc(String((e as any).message || e))}</pre>`;
+        }
+      };
       return;
     }
     const auth = await cell(() => call("git_auth_status"));
@@ -1557,8 +1860,8 @@ function openPublish() {
       }
       return;
     }
-    const staged = st.staged.map((f: any) => `${f.path}`).join("<br>");
-    const unstaged = st.unstaged.map((f: any) => `${f.path}`).join("<br>");
+    const staged = st.staged.map((f: any) => esc(String(f.path))).join("<br>");
+    const unstaged = st.unstaged.map((f: any) => esc(String(f.path))).join("<br>");
     const unrel = st.unrelated_modified.length
       ? `<p class="muted">Unrelated working changes (will not be touched):<br>${st.unrelated_modified.map(esc).join("<br>")}</p>`
       : "";
@@ -1571,12 +1874,16 @@ function openPublish() {
         : st.behind > 0
           ? `<p class="error-text">Branch is <strong>${st.behind} behind</strong> remote — push will be rejected.</p>`
           : "";
+    const deployBranchNotice = st.branch !== "main"
+      ? `<p class="error-text">You are publishing <strong>${esc(st.branch)}</strong>, not <strong>main</strong>. The Pages workflow deploys only main, so this push will not update the live site until the branch is merged into main.</p>`
+      : "";
     const pullBtn = syncState
       ? `<div class="modal-actions"><button id="pub-cancel3" class="btn">Cancel</button><button id="pub-pull" class="btn publish">Pull latest (rebase)</button></div>`
       : "";
     body.innerHTML = `
       <p>Branch: <strong>${esc(st.branch)}</strong>${st.ahead ? ` (${st.ahead} ahead)` : ""}${st.behind ? ` (${st.behind} behind)` : ""}</p>
       ${syncState}
+      ${deployBranchNotice}
       ${pullBtn}
       ${lastCommit ? `<p class="muted">Last commit: <code>${esc(lastCommit)}</code></p>` : ""}
       ${buildInfo ? `<p class="muted">Last build: ${esc(buildInfo.generated_at || "unknown")} · ${buildInfo.devlog_posts} post pages · ${buildInfo.archive_folders.join(", ")} § feed: ${buildInfo.feed_generated ? "yes" : "no"} · sitemap: ${buildInfo.sitemap_generated ? "yes" : "no"}</p>` : ""}
@@ -1585,7 +1892,7 @@ function openPublish() {
       ${diffText ? `<details class="diff-details"><summary>View working-tree diff</summary><pre class="diffbox diff-big">${esc(diffText)}</pre></details>` : ""}
       ${unrel}
       <label>Commit message<input id="pub-msg" value="Update portfolio content" /></label>
-      <p class="muted">Will lint posts, run the publish build, stage content/assets, commit, push, and fire any configured deploy hook.</p>
+      <p class="muted">Will lint posts, run the publish build, stage additions, edits, and deletions in content and generated site output, commit, push, and fire any configured deploy hook.</p>
     `;
     $("#pub-cancel3", overlay)?.addEventListener("click", () => overlay.remove());
     $("#pub-pull", overlay)?.addEventListener("click", async () => {
@@ -1620,8 +1927,24 @@ function openPublish() {
       $("#pub-go", overlay)!.disabled = true;
       body.innerHTML = `<p class="muted">Linting posts…</p>`;
       try {
-        const lint = await cell(() => call("lint_posts"));
-        if (lint && lint.errors_count > 0) {
+        let lint;
+        try {
+          lint = await call("lint_posts");
+        } catch (e) {
+          body.innerHTML = `<p class="error-text">Lint failed to run — publish blocked.</p>
+            <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
+            <p class="muted">Resolve the lint command error, then retry.</p>
+            <div class="modal-actions"><button id="pub-close-lint" class="btn">Close</button></div>`;
+          $("#pub-close-lint", overlay)!.onclick = () => overlay.remove();
+          return;
+        }
+        if (!lint) {
+          body.innerHTML = `<p class="error-text">Lint returned no result — publish blocked.</p>
+            <div class="modal-actions"><button id="pub-close-lint" class="btn">Close</button></div>`;
+          $("#pub-close-lint", overlay)!.onclick = () => overlay.remove();
+          return;
+        }
+        if (lint.errors_count > 0) {
           body.innerHTML = `<p class="error-text">Lint blocked the publish (${lint.errors_count} error(s)).</p>
             <pre class="diffbox diff-big">${esc(lint.issues.filter((i: any) => i.severity === "error").map((i: any) => `${i.file}: ${i.message}`).join("\n"))}</pre>
             <p class="muted">Fix the issues above, or unpublish the offending posts, then retry.</p>
@@ -1649,20 +1972,53 @@ function openPublish() {
           return;
         }
         const paths = new Set<string>();
-        const stagePat = /^(content\/|devlog\/|devlog\.html|assets\/|pages\.html|pages\/|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json)/;
+        const stagePat = /^(content\/|devlog\/|devlog\.html|assets\/(?:posts|pages|projects|og)\/|pages\.html|pages\/|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json|\.github\/workflows\/publish\.yml)/;
         (status2.unstaged || []).forEach((f: any) => {
           if (stagePat.test(f.path)) paths.add(f.path);
         });
-        (status2.staged || []).forEach((f: any) => paths.add(f.path));
         (status2.untracked || []).forEach((p: any) => {
           if (stagePat.test(p)) paths.add(p);
         });
-        body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)…</p>`;
-        await call("git_stage_paths", { paths: Array.from(paths) });
+        const deleted = (status2.unstaged || []).filter((f: any) => f.status === "deleted" && stagePat.test(f.path));
+        body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)${deleted.length ? `, including ${deleted.length} deletion${deleted.length === 1 ? "" : "s"}` : ""}…</p>`;
+        const stagedPaths = Array.from(paths);
+        await call("git_stage_paths", { paths: stagedPaths });
+        if (paths.size === 0) {
+          body.innerHTML = `<p class="muted">Nothing to stage — no content changes to publish.</p>
+            <div class="modal-actions"><button id="pub-close-none" class="btn">Close</button></div>`;
+          $("#pub-close-none", overlay)!.onclick = () => overlay.remove();
+          $("#pub-go", overlay)!.remove();
+          return;
+        }
         const msg = ($("#pub-msg", overlay) as HTMLInputElement)?.value || "Update portfolio content";
-        const commitHash = await call("git_commit", { message: msg });
+        let commitHash = "";
+        try {
+          commitHash = await call("git_commit", { message: msg });
+        } catch (e) {
+          await unstageQuietly(stagedPaths);
+          body.innerHTML = `<p class="error-text">Commit failed — nothing was published.</p>
+            <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
+            <p class="muted">Your changes are still in the working tree (unstaged). Fix the error and retry.</p>
+            <div class="modal-actions"><button id="pub-close-commit" class="btn">Close</button></div>`;
+          $("#pub-close-commit", overlay)!.onclick = () => overlay.remove();
+          $("#pub-go", overlay)!.remove();
+          return;
+        }
         body.innerHTML = `<p class="muted">Pushing…</p>`;
-        const push = await call("git_push", { branch: status2.branch });
+        let push = "";
+        try {
+          push = await call("git_push", { branch: status2.branch });
+        } catch (e) {
+          // Commit succeeded but push failed — do NOT unstage (it's already committed),
+          // but make the failure clear so the user can retry from a terminal.
+          body.innerHTML = `<p class="error-text">Commit succeeded but push failed.</p>
+            <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
+            <p class="muted">The commit is local. Pull the latest changes or fix your credentials, then run <code>git push</code> in the repository.</p>
+            <div class="modal-actions"><button id="pub-close-push" class="btn">Close</button></div>`;
+          $("#pub-close-push", overlay)!.onclick = () => overlay.remove();
+          $("#pub-go", overlay)!.remove();
+          return;
+        }
         let hookLine = "";
         try {
           const hook = await call("trigger_deploy_hook");
@@ -1693,6 +2049,14 @@ function openPublish() {
 
 function slugify(s: string) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+}
+
+async function unstageQuietly(paths: string[]) {
+  try {
+    await call("git_unstage", { paths });
+  } catch {
+    /* best-effort: never let an unstage failure obscure the real error */
+  }
 }
 
 function applyThemeToggle(theme: string) {
@@ -1766,10 +2130,10 @@ async function renderRecoveryList(list: HTMLElement) {
   list.querySelectorAll("[data-rec-restore]").forEach((b) => {
     b.addEventListener("click", async () => {
       const key = (b as HTMLElement).dataset["rec-restore"]!;
-      const content = await cell(() => call("load_recovery", { key }));
-      if (content == null) return;
+      const snapshot = await cell(() => call("load_recovery", { key }));
+      if (snapshot == null) return;
       overlayFor(list)?.remove();
-      await restoreFromKey(key, content);
+      await restoreFromKey(key, snapshot);
     });
   });
   list.querySelectorAll("[data-rec-discard]").forEach((b) => {
@@ -1787,7 +2151,7 @@ function overlayFor(inside: HTMLElement): HTMLElement | null {
   return node;
 }
 
-async function restoreFromKey(key: string, content: string) {
+async function restoreFromKey(key: string, snapshot: any) {
   if (key.startsWith("post:")) {
     const [page, slug] = key.slice("post:".length).split("/");
     showPostView(page, slug);
@@ -1799,7 +2163,8 @@ async function restoreFromKey(key: string, content: string) {
   const page = bits[1] || state.tree[0]?.slug || "";
   pendingClearKeys.push(key);
   openPostEditor(page, null);
-  state.editor!.setBody(content);
+  state.editor!.setBody(typeof snapshot === "string" ? snapshot : snapshot.content || "");
+  restoreRecoveryMetadata(typeof snapshot === "string" ? null : snapshot.metadata);
   state.editorDirty = true;
   state.editor?.setStatus("Restored unsaved draft — save to keep it");
 }
@@ -1819,6 +2184,7 @@ async function maybeShowRecoveryNotice(v: HTMLElement) {
 
 // ---------- Settings ----------
 function showSettings() {
+  resetEditorState();
   state.view = { kind: "settings" };
   const v = viewContent();
   v.innerHTML = "";
@@ -1850,6 +2216,13 @@ function showSettings() {
       <p class="muted">Deploy hook fires after a successful push and lets a CI service rebuild the live site.</p>
     </details>
     <details class="settings-section">
+      <summary>Phone sync</summary>
+      <label>Sync gateway URL <input id="set-sync-url" value="${esc(state.prefs?.settings?.sync_gateway_url || "")}" placeholder="https://content-sync.example.workers.dev" /></label>
+      <p class="muted">Uses a GitHub App on the gateway. Your phone never receives a GitHub token or deploy secret.</p>
+      <div class="card-actions"><button id="set-sync-check" class="btn">Check gateway</button><button id="set-sync-pair" class="btn">Create phone pairing…</button></div>
+      <p id="set-sync-msg" class="muted"></p>
+    </details>
+    <details class="settings-section">
       <summary>Comments (giscus)</summary>
       <label>giscus repo ID <input id="set-gisc-repo" value="${esc(state.prefs?.settings?.giscus_repo_id || "")}" placeholder="e.g. R_kgDO…" /></label>
       <label>giscus category ID <input id="set-gisc-cat" value="${esc(state.prefs?.settings?.giscus_category_id || "")}" placeholder="e.g. DIC_kwDO…" /></label>
@@ -1869,12 +2242,18 @@ function showSettings() {
     </label>
     <button id="set-save" class="btn primary">Save Settings</button>
     <p id="set-msg" class="muted"></p>
+    <p class="muted version-line">Content Studio <code id="set-version">…</code></p>
   `;
   v.appendChild(form);
   ($("#set-theme") as HTMLSelectElement).value = state.prefs?.theme || "system";
   ($("#set-status") as HTMLSelectElement).value = state.prefs?.default_status || "draft";
   ($("#set-publish-mode") as HTMLSelectElement).value = state.prefs?.publish_mode || "publish";
   ($("#set-syndicate") as HTMLSelectElement).value = state.prefs?.settings?.syndicate_via || "none";
+  cell(async () => {
+    const ver = await call("app_version");
+    const vn = $("#set-version");
+    if (vn) vn.textContent = String(ver ?? "unknown");
+  });
   renderAuthStatus();
   cell(async () => {
     const info = await cell(() => call("analytics_summary"));
@@ -1891,6 +2270,31 @@ function showSettings() {
     if (h) h.textContent = hash || "—";
   });
   $("#set-recover")!.onclick = openRecoveryDashboard;
+  $("#set-sync-check")!.onclick = async () => {
+    const message = $("#set-sync-msg") as HTMLElement;
+    try {
+      await checkSyncGateway(($("#set-sync-url") as HTMLInputElement).value);
+      message.textContent = "Gateway is reachable.";
+      message.className = "success-text";
+    } catch (error) {
+      message.textContent = String((error as any).message || error);
+      message.className = "error-text";
+    }
+  };
+  $("#set-sync-pair")!.onclick = async () => {
+    const url = ($("#set-sync-url") as HTMLInputElement).value;
+    const secret = window.prompt("Enter the sync admin secret. It is used once and is never saved on this device.", "") || "";
+    if (!secret) return;
+    const message = $("#set-sync-msg") as HTMLElement;
+    try {
+      const pairing = await createPhonePairing(url, secret);
+      message.textContent = `Phone pairing code: ${pairing.code} (expires ${pairing.expires_at})`;
+      message.className = "success-text";
+    } catch (error) {
+      message.textContent = String((error as any).message || error);
+      message.className = "error-text";
+    }
+  };
   $("#set-save")!.onclick = async () => {
     const repo = ($("#set-repo") as HTMLInputElement).value.trim();
     if (repo) {
@@ -1913,11 +2317,14 @@ function showSettings() {
         giscus_category_id: ($("#set-gisc-cat") as HTMLInputElement).value.trim() || null,
         umami_url: ($("#set-umami-url") as HTMLInputElement).value.trim() || null,
         umami_website_id: ($("#set-umami-id") as HTMLInputElement).value.trim() || null,
+        sync_gateway_url: ($("#set-sync-url") as HTMLInputElement).value.trim() || null,
       },
     };
-    state.prefs = prefs;
+    // Merge over current prefs so never-rendered fields (window state, editor
+    // mode, sidebar width, …) are preserved locally and on disk.
+    state.prefs = { ...state.prefs, ...prefs, settings: { ...state.prefs?.settings, ...prefs.settings } };
     await cell(() => call("set_prefs", { prefs }));
-    applyThemeToggle(prefs.theme === "dark" ? "dark" : prefs.theme === "light" ? "light" : "dark");
+    applyThemeToggle(state.prefs.theme === "dark" ? "dark" : state.prefs.theme === "light" ? "light" : "dark");
     ($("#set-msg") as HTMLElement).textContent = "Saved.";
     await refreshTree();
   };
@@ -1965,7 +2372,9 @@ function wireTop() {
   $$(".topnav2 button").forEach((b) => {
     b.addEventListener("click", () => {
       const nav = (b as HTMLElement).dataset.nav;
-      if (nav === "pages") showPagesView();
+      if (nav === "dashboard") showDashboard();
+      else if (nav === "sync") showSyncView();
+      else if (nav === "pages") showPagesView();
       else if (nav === "projects") showProjectsView();
       else if (nav === "allposts") showAllPostsView();
       else if (nav === "newpost") openPostEditor(promptPageForPost(), null);
@@ -1992,7 +2401,7 @@ function renderSidebarFiltered(q: string) {
 }
 
 boot().then(() => {
-  showPagesView();
+  showDashboard();
   wireTop();
   installShortcuts();
   installGlobalDrop();

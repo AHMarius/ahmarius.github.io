@@ -1,5 +1,17 @@
 [
   {
+    "slug": "434r34",
+    "title": "434r34",
+    "excerpt": "hello",
+    "tags": [],
+    "technologies": [],
+    "project": "",
+    "page": "test",
+    "date": "2026-09-15",
+    "updatedDate": "2026-09-16",
+    "url": "/devlog/434r34.html"
+  },
+  {
     "slug": "first-solver",
     "title": "First Solver",
     "excerpt": "First Solver This is a test post with inline math and a block:",

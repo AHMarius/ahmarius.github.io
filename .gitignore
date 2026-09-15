@@ -14,6 +14,8 @@ games/justdrive/cmake_install.cmake
 
 # Editor-written site config (giscus/umami settings; no secrets)
 .studio-config.json
+# Deletion trash kept by the admin app until it is committed or purged
+.trash/
 _site/
 .bundle/
 vendor/

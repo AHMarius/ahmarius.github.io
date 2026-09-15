@@ -5,8 +5,9 @@
 -- reads Markdown + YAML frontmatter only). See docs/database.md for the
 -- decision record and rationale.
 
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
+-- Connection safety settings are applied by openIndex(). Keeping them out of
+-- this schema makes applying the DDL safe even when a caller has a transaction
+-- open for a migration or rebuild.
 
 -- Canonical entry data mirror of content/pages/<page>/page.yml
 CREATE TABLE IF NOT EXISTS pages (

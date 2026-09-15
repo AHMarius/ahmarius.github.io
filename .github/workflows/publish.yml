@@ -1,4 +1,4 @@
-name: Build & publish site
+name: Build & publish static site
 
 on:
   push:
@@ -25,6 +25,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # This is a Node-only static-site build. Do not add ruby/setup-ruby or
+      # `bundle install` here: the repository no longer ships a Jekyll site or
+      # a Gemfile.lock, and doing so reintroduces Bundler lockfile failures.
 
       - name: Setup Node
         uses: actions/setup-node@v4

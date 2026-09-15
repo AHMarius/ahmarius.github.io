@@ -12,6 +12,7 @@ import { validatePageMeta, assertValidMeta } from './content/schema.mjs';
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, 'pages');
 const PUBLIC_HREF = 'pages.html';
+const PAGE_ASSETS_DIR = path.join(ROOT, 'assets', 'pages');
 
 function relFromPage(depth) {
   return depth > 0 ? '../'.repeat(depth) : '';
@@ -246,6 +247,25 @@ export async function buildPages(opts = {}) {
 
   const pagesBySlug = new Map(pages.map((p) => [p.slug, p]));
 
+  // `pages/` and `assets/pages/` are build output, not source content.  Keep
+  // them in lockstep with the current hierarchy so deleting a page (or its
+  // cover) cannot leave a live, orphaned URL behind after the next publish.
+  // We only remove directories that are not current page slugs; source pages
+  // live under content/pages/ and are never touched here.
+  if (mode === 'publish') {
+    const keepPages = new Set(pages.map((page) => page.slug));
+    const existing = await fs.readdir(OUT_DIR, { withFileTypes: true }).catch(() => []);
+    for (const entry of existing) {
+      if (entry.isDirectory() && !keepPages.has(entry.name)) {
+        await fs.rm(path.join(OUT_DIR, entry.name), { recursive: true, force: true });
+      }
+    }
+    // Unlike pages/, every item in this folder is an editor-generated cover
+    // copy. Rebuild it from source to also remove a cover replaced or removed
+    // on an otherwise still-existing page.
+    await fs.rm(PAGE_ASSETS_DIR, { recursive: true, force: true });
+  }
+
   // Page covers are rendered as root-relative URLs; bare filenames are treated
   // as files living in the page's content directory and are copied into a
   // published, stable location under assets/pages/<page>/.
@@ -300,8 +320,10 @@ export async function buildPages(opts = {}) {
     }
   }
   // Post-local assets live under the same URL whether the post renders on the
-  // devlog or on its page hub; copying is idempotent and safe on its own.
-  await copyAllPostAssets(allPosts);
+  // devlog or on its page hub.  A production build copies published posts
+  // only: otherwise the page build would reintroduce a draft asset that the
+  // devlog build correctly removed earlier in the same publish.
+  await copyAllPostAssets(mode === 'publish' ? gridPosts : allPosts);
   // In preview mode the landing page still lists every post, but it is tagged
   // with its status so the filter toolbar can surface drafts.
   for (const page of pages) {

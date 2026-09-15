@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -13,8 +14,24 @@ const SCHEMA_PATH = path.join(MODULE_DIR, 'schema.sql');
  * Returns a connected DatabaseSync handle.
  */
 export function openIndex(dbPath) {
-  const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA foreign_keys = ON;');
+  const memory = dbPath === ':memory:';
+  const resolvedPath = memory ? dbPath : path.resolve(dbPath);
+  if (!memory && fsSync.existsSync(resolvedPath) && fsSync.lstatSync(resolvedPath).isSymbolicLink()) {
+    throw new Error(`Refusing to open a SQLite index through a symbolic link: ${resolvedPath}`);
+  }
+  const db = new DatabaseSync(resolvedPath);
+  // This is a local cache, but it may contain unpublished drafts. Keep it
+  // private to the current OS account and make SQLite reject unsafe schema
+  // behaviours, wait briefly for another editor, and overwrite freed pages.
+  if (!memory) fsSync.chmodSync(resolvedPath, 0o600);
+  db.exec(`
+    PRAGMA foreign_keys = ON;
+    PRAGMA trusted_schema = OFF;
+    PRAGMA secure_delete = ON;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = FULL;
+  `);
   return db;
 }
 
@@ -31,6 +48,22 @@ export async function applySchema(db) {
  * Uses the canonical Markdown source; the DB stays a pure cache.
  */
 export async function rebuildIndex(db, contentRoot) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    await rebuildIndexTransaction(db, contentRoot);
+    db.exec('COMMIT');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // The original error is the useful one (the transaction may never have
+      // started successfully), so do not hide it with a rollback failure.
+    }
+    throw error;
+  }
+}
+
+async function rebuildIndexTransaction(db, contentRoot) {
   const pagesRoot = path.join(contentRoot, 'pages');
   const pages = await getPageTree(pagesRoot, false);
   const postsByDir = await collectPosts(pagesRoot);
@@ -57,8 +90,6 @@ export async function rebuildIndex(db, contentRoot) {
        project, series, part, date, updated_date, tags, technologies, body, file_path)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-
-  db.exec('BEGIN');
 
   // Upsert all pages.
   for (const page of pages) {
@@ -116,7 +147,6 @@ export async function rebuildIndex(db, contentRoot) {
   }
 
   // Post counts come from the posts table itself, nothing further needed.
-  db.exec('COMMIT');
 }
 
 async function collectPosts(pagesRoot) {
@@ -162,11 +192,13 @@ async function safePageMeta(dir) {
  * string trips FTS5's query grammar (e.g. stray `-`, unbalanced quotes).
  */
 export function searchPosts(db, query, { limit = 25, page = null } = {}) {
-  const terms = query.trim();
+  const terms = String(query || '').trim().slice(0, 500);
   if (!terms) return [];
+  if (Number.isInteger(limit) && limit <= 0) return [];
+  const safeLimit = Number.isInteger(limit) ? Math.min(limit, 100) : 25;
   const extra = page ? ' AND p.page = ?' : '';
   const suffix = page ? [' ORDER BY match_rank LIMIT ?', page] : [' ORDER BY match_rank LIMIT ?'];
-  const full = limit;
+  const full = safeLimit;
 
   try {
     const safe = terms.replace(/"/g, '""');
