@@ -375,7 +375,21 @@ pub fn deploy_pages(repo: &Path) -> AppResult<String> {
             "The publish snapshot is missing. Run the publish build before deploying.".into(),
         ));
     }
-    for private in ["content", "admin-app", "scripts", ".git"] {
+    for private in [
+        "content",
+        "admin-app",
+        "scripts",
+        "sync-service",
+        "bin",
+        "docs",
+        ".git",
+        ".gitignore",
+        ".gitattributes",
+        "start.sh",
+        "package.json",
+        "package-lock.json",
+        "README.md",
+    ] {
         if dist.join(private).exists() {
             return Err(AppError::Validation(format!(
                 "Refusing to deploy: dist/ unexpectedly contains private source path '{private}'."
@@ -844,6 +858,21 @@ mod tests {
 
         fs::remove_dir_all(&dir).ok();
         fs::remove_dir_all(&bare).ok();
+    }
+
+    #[test]
+    fn deployment_rejects_source_only_paths() {
+        let dir = repo();
+        let dist = dir.join("dist");
+        fs::create_dir_all(dist.join("sync-service")).unwrap();
+        fs::write(dist.join("index.html"), "home").unwrap();
+        fs::write(dist.join("devlog.html"), "devlog").unwrap();
+        fs::write(dist.join("sync-service/worker.js"), "private source").unwrap();
+
+        let error = deploy_pages(&dir).unwrap_err().to_string();
+        assert!(error.contains("sync-service"));
+
+        fs::remove_dir_all(&dir).ok();
     }
 
 }

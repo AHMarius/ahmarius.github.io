@@ -487,6 +487,38 @@ export async function buildDevlog(opts = {}) {
 }
 
 async function copyDistTree(log = console) {
+  // Public deployment is intentionally allowlisted at the repository root.
+  // New source/tooling directories therefore stay private by default.
+  const publicRootEntries = new Set([
+    'about.html',
+    'assets',
+    'atom.xml',
+    'BikeRider',
+    'ClearVision',
+    'devlog',
+    'devlog.html',
+    'ED',
+    'feed.xml',
+    'FluidDynamics',
+    'game-player.html',
+    'games',
+    'games.html',
+    'GraphingTool',
+    'ImageEdit',
+    'index.html',
+    'IronHalo',
+    'KeyboardHero',
+    'Misc',
+    'pages',
+    'pages.html',
+    'PongPP',
+    'projects.html',
+    'robots.txt',
+    'search-index.json',
+    'sitemap.xml',
+    'Snek',
+    'Tower',
+  ]);
   const namesToSkip = new Set([
     '.git',
     '.idea',
@@ -512,11 +544,12 @@ async function copyDistTree(log = console) {
     '.studio-config.json',
     'generate-manifests.sh',
   ]);
-  async function copyDir(src, dest) {
+  async function copyDir(src, dest, root = false) {
     await fs.mkdir(dest, { recursive: true });
     const entries = await fs.readdir(src, { withFileTypes: true });
     for (const entry of entries) {
       if (namesToSkip.has(entry.name)) continue;
+      if (root && !publicRootEntries.has(entry.name)) continue;
       const from = path.join(src, entry.name);
       const to = path.join(dest, entry.name);
       if (entry.isDirectory()) {
@@ -528,7 +561,7 @@ async function copyDistTree(log = console) {
   }
   await fs.rm(DIST_DIR, { recursive: true, force: true });
   await fs.mkdir(DIST_DIR, { recursive: true });
-  await copyDir(ROOT, DIST_DIR);
+  await copyDir(ROOT, DIST_DIR, true);
   // Prevent GitHub Pages from rebuilding this already-generated snapshot.
   await fs.writeFile(path.join(DIST_DIR, '.nojekyll'), '', 'utf8');
   log.log('Built dist/ tree.');

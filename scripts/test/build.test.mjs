@@ -145,6 +145,10 @@ test('publish build generates RSS feed, Atom feed, sitemap, and robots.txt', asy
   await fs.access(path.join(REPO, 'dist', '.nojekyll'));
   await assert.rejects(fs.access(path.join(REPO, 'dist', 'content')));
   await assert.rejects(fs.access(path.join(REPO, 'dist', 'admin-app')));
+  await assert.rejects(fs.access(path.join(REPO, 'dist', 'bin')));
+  await assert.rejects(fs.access(path.join(REPO, 'dist', 'sync-service')));
+  await assert.rejects(fs.access(path.join(REPO, 'dist', 'start.sh')));
+  await assert.rejects(fs.access(path.join(REPO, 'dist', '.gitignore')));
   const feed = await fs.readFile(path.join(REPO, 'feed.xml'), 'utf8');
   assert.match(feed, /<rss version="2\.0"/);
   assert.match(feed, /<item>/);
