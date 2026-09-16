@@ -1,0 +1,72 @@
+/* Print stylesheet: keep the article readable on paper while hiding
+   chrome (nav, hero canvas, toolbar, share buttons, comments). */
+
+@media print {
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  body {
+    margin: 0;
+    line-height: 1.5;
+    font-size: 11pt;
+  }
+
+  #hero-fluid,
+  .topnav,
+  .hamburger-btn,
+  .mobile-menu,
+  .skip-link,
+  .devlog-toolbar,
+  .devlog-grid,
+  .devlog-empty,
+  .devlog-share,
+  .post-print,
+  .post-actions,
+  .post-toc,
+  .related-posts,
+  .series-nav,
+  .giscus,
+  .footer,
+  .footer-nav {
+    display: none !important;
+  }
+
+  .devlog-post,
+  .devlog-article {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  a {
+    text-decoration: underline;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+  }
+
+  img,
+  pre,
+  blockquote {
+    break-inside: avoid;
+  }
+
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "type": "FIGHTER",
+  "detectionRadius": 400,
+  "attackRange": 400,
+  "fleeHealthPct": 0.28,
+  "speed": 100,
+  "aggression": 0.75,
+  "supportRadius": 5,
+  "kamikazeChance": 0.1
+}
