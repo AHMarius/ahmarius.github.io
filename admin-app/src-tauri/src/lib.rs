@@ -589,39 +589,81 @@ fn import_cover(
 fn read_repo_file(app: tauri::AppHandle, rel_path: String) -> Result<String, AppError> {
     with_repo(&app, None, |repo| {
         let path = resolve_in_repo(repo, &rel_path)?;
-        if !path.is_file() {
-            return Err(AppError::Validation(format!(
-                "File not found in repo: {}",
-                rel_path
-            )));
-        }
-        let bytes = std::fs::read(&path)?;
-        if bytes.len() > 15 * 1024 * 1024 {
-            return Err(AppError::Validation(
-                "File is too large to preview in the app.".into(),
-            ));
-        }
-        let mime = match path
-            .extension()
-            .map(|e| e.to_string_lossy().to_lowercase())
-            .as_deref()
-        {
-            Some("png") => "image/png",
-            Some("jpg") | Some("jpeg") => "image/jpeg",
-            Some("gif") => "image/gif",
-            Some("webp") => "image/webp",
-            Some("svg") => "image/svg+xml",
-            Some("avif") => "image/avif",
-            Some("pdf") => "application/pdf",
-            _ => "application/octet-stream",
-        };
-        use base64::Engine as _;
-        Ok(format!(
-            "data:{};base64,{}",
-            mime,
-            base64::engine::general_purpose::STANDARD.encode(&bytes)
-        ))
+        file_preview_data_url(&path, &rel_path)
     })
+}
+
+/// Resolve a Markdown `assets/...` reference against the selected post. This
+/// keeps live preview working for nested pages without exposing arbitrary file
+/// reads to the webview.
+#[tauri::command]
+fn read_post_asset(
+    app: tauri::AppHandle,
+    page_slug: String,
+    post_slug: String,
+    asset_path: String,
+) -> Result<String, AppError> {
+    with_repo(&app, None, |repo| {
+        let clean = asset_path
+            .trim()
+            .trim_start_matches("./")
+            .strip_prefix("assets/")
+            .unwrap_or(asset_path.trim());
+        let relative = Path::new(clean);
+        if clean.is_empty()
+            || relative.is_absolute()
+            || relative.components().any(|part| !matches!(part, Component::Normal(_)))
+        {
+            return Err(AppError::Validation("Unsafe post asset path.".into()));
+        }
+        let assets = content::post_assets_dir_of(repo, &page_slug, &post_slug)?;
+        let target = assets.join(relative);
+        let root = repo.canonicalize().map_err(AppError::from)?;
+        let assets_root = assets
+            .canonicalize()
+            .map_err(|_| AppError::Validation("Post asset directory was not found.".into()))?;
+        let canonical = target
+            .canonicalize()
+            .map_err(|_| AppError::Validation(format!("Post asset not found: {asset_path}")))?;
+        if !canonical.starts_with(&root) || !canonical.starts_with(&assets_root) {
+            return Err(AppError::Validation("Post asset escaped the repository.".into()));
+        }
+        file_preview_data_url(&canonical, &asset_path)
+    })
+}
+
+fn file_preview_data_url(path: &Path, label: &str) -> Result<String, AppError> {
+    if !path.is_file() {
+        return Err(AppError::Validation(format!("File not found in repo: {label}")));
+    }
+    let bytes = std::fs::read(path)?;
+    if bytes.len() > 15 * 1024 * 1024 {
+        return Err(AppError::Validation(
+            "File is too large to preview in the app (15 MiB limit).".into(),
+        ));
+    }
+    let mime = match path
+        .extension()
+        .map(|extension| extension.to_string_lossy().to_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("avif") => "image/avif",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("ogg") | Some("ogv") => "video/ogg",
+        Some("pdf") => "application/pdf",
+        _ => "application/octet-stream",
+    };
+    use base64::Engine as _;
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
 }
 
 #[tauri::command]
@@ -860,6 +902,11 @@ fn git_push(app: tauri::AppHandle, branch: String) -> Result<String, AppError> {
 }
 
 #[tauri::command]
+fn validate_deploy_snapshot(app: tauri::AppHandle) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| git::validate_deploy_snapshot(repo))
+}
+
+#[tauri::command]
 fn deploy_pages(app: tauri::AppHandle) -> Result<String, AppError> {
     with_repo(&app, None, |repo| git::deploy_pages(repo))
 }
@@ -1019,6 +1066,7 @@ pub fn run() {
             capture_screenshot,
             pick_file,
             read_repo_file,
+            read_post_asset,
             scan_media,
             delete_media,
             list_trash,
@@ -1033,6 +1081,7 @@ pub fn run() {
             git_commit,
             git_unstage,
             git_push,
+            validate_deploy_snapshot,
             deploy_pages,
             git_pull,
             git_last_commit,

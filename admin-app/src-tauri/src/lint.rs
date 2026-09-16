@@ -151,12 +151,18 @@ fn lint_one_post(repo: &Path, file: &Path, rel: &str) -> AppResult<Vec<LintIssue
             }
             rest = &after[end..];
         }
-        let mut i = line;
-        while let Some(start) = i.find("![](") {
-            let after = &i[start + 4..];
+        let mut image_text = line;
+        while let Some(start) = image_text.find("![") {
+            let label_and_target = &image_text[start + 2..];
+            let Some(separator) = label_and_target.find("](") else { break };
+            let after = &label_and_target[separator + 2..];
             let end = after.find(')').unwrap_or(after.len());
             let target = &after[..end];
-            if !target.is_empty() && !target.starts_with("http") && !exists(target) {
+            if !target.is_empty()
+                && !target.starts_with("http")
+                && !target.starts_with("data:")
+                && !exists(target)
+            {
                 issues.push(LintIssue {
                     severity: "error".into(),
                     message: format!("Missing image asset: {}", target),
@@ -164,7 +170,29 @@ fn lint_one_post(repo: &Path, file: &Path, rel: &str) -> AppResult<Vec<LintIssue
                     line: Some(idx + 1),
                 });
             }
-            i = &after[end..];
+            image_text = &after[end.min(after.len())..];
+        }
+
+        let mut html = line;
+        while let Some(video_start) = html.find("<video") {
+            let video = &html[video_start + "<video".len()..];
+            let Some(src_start) = video.find("src=\"") else { break };
+            let value = &video[src_start + "src=\"".len()..];
+            let end = value.find('"').unwrap_or(value.len());
+            let target = &value[..end];
+            if !target.is_empty()
+                && !target.starts_with("http")
+                && !target.starts_with("data:")
+                && !exists(target)
+            {
+                issues.push(LintIssue {
+                    severity: "error".into(),
+                    message: format!("Missing video asset: {}", target),
+                    file: rel.to_string(),
+                    line: Some(idx + 1),
+                });
+            }
+            html = &value[end.min(value.len())..];
         }
     }
 
@@ -226,14 +254,17 @@ mod tests {
         let posts = root.join("content/pages/demo/posts");
         std::fs::create_dir_all(posts.join("p1/assets")).unwrap();
         std::fs::write(posts.join("p1/assets/photo.png"), "not really an image").unwrap();
+        std::fs::write(posts.join("p1/assets/clip.mp4"), "not really a video").unwrap();
         std::fs::write(
             posts.join("p1.md"),
-            "---\ntitle: With image\ndate: 2026-09-01\nstatus: published\nexcerpt: X.\ntags: [A]\n---\n![](assets/photo.png) and ![](assets/missing.png)\n",
+            "---\ntitle: With image\ndate: 2026-09-01\nstatus: published\nexcerpt: X.\ntags: [A]\n---\n![Photo](assets/photo.png) and ![Missing](assets/missing.png)\n<video src=\"assets/clip.mp4\" controls preload=\"metadata\"></video>\n<video src=\"assets/missing.mp4\" controls preload=\"metadata\"></video>\n",
         )
         .unwrap();
         let report = lint_posts(&root).unwrap();
         assert!(!report.issues.iter().any(|i| i.message.contains("photo.png")));
+        assert!(!report.issues.iter().any(|i| i.message.contains("clip.mp4")));
         assert!(report.issues.iter().any(|i| i.message.contains("missing.png")));
+        assert!(report.issues.iter().any(|i| i.message.contains("missing.mp4")));
         std::fs::remove_dir_all(&root).ok();
     }
 }

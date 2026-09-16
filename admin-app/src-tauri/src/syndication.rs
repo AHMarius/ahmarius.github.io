@@ -49,7 +49,7 @@ pub async fn trigger_deploy_hook(hook_url: &str) -> AppResult<DeployHookResult> 
         .await
         .map(|t| t.chars().take(500).collect())
         .unwrap_or_default();
-    let ok = status >= 200 && status < 300;
+    let ok = (200..300).contains(&status);
     Ok(DeployHookResult {
         ok,
         status: Some(status),

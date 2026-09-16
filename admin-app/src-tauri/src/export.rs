@@ -1,4 +1,4 @@
-use crate::{AppError, AppResult, resolve_in_repo};
+use crate::{AppError, AppResult};
 use std::path::Path;
 use std::process::Command;
 
@@ -29,7 +29,7 @@ pub fn export_post(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<E
             detail: "pandoc is not installed. Install pandoc (brew install pandoc, or from pandoc.org) to enable PDF/DOCX export.".into(),
         });
     }
-    let file = resolve_in_repo(repo, &format!("content/pages/{}/posts/{}.md", page_slug, post_slug))?;
+    let file = crate::content::post_file_of(repo, page_slug, post_slug)?;
     let raw = std::fs::read_to_string(&file)?;
     let (meta, body) = crate::content::parse_post(&raw);
     let md = format!(

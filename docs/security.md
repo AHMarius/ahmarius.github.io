@@ -34,8 +34,10 @@ default-src 'self' ipc: http://ipc.localhost;
 script-src 'self';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:;
+media-src 'self' data: blob: https:;
+frame-src https://www.youtube-nocookie.com https://player.vimeo.com;
 font-src 'self' data:;
-connect-src 'self' ipc: http://ipc.localhost;
+connect-src 'self' ipc: http://ipc.localhost https:;
 object-src 'none'; base-uri 'self'; form-action 'self'
 ```
 
@@ -46,8 +48,16 @@ Notes:
   `style-src 'unsafe-inline'`).
 - `img-src data:` — the app previews cover art by reading files from the repo
   and returning them as base64 `data:` URIs (`read_repo_file`).
+- `media-src` and `frame-src` allow post video preview. Frames are restricted
+  to privacy-enhanced YouTube and Vimeo players; arbitrary remote frames and
+  scripts remain blocked. Post-local media is returned through the constrained
+  `read_post_asset` command as a data URI (with a 15 MiB preview limit).
 - The Tauri IPC (`invoke`) uses the `ipc:`/`http://ipc.localhost` scheme, so it
   is allowed in `default-src`/`connect-src`.
+- Outbound connections are HTTPS-only so the desktop and Android Phone Sync
+  editor can reach its configured gateway without permitting clear-text
+  internet traffic. The sync client separately rejects non-HTTPS URLs except
+  localhost during development.
 
 ### Capabilities / OS shell access
 
@@ -99,7 +109,10 @@ canonical source to `main`, and pushes only the sanitized `dist/` snapshot
 to `gh-pages`. Deployment uses a disposable clone so it cannot switch, clean,
 or overwrite the source checkout. The publish command rejects non-fast-forward
 updates to `main`, unexpected private paths in `dist/`, and symlinks in the
-public snapshot.
+public snapshot. It also refuses to deploy when an uncommitted content file,
+build input, generated page, or public asset could make the snapshot differ
+from the source commit. The user reviews the post-build allowlist and diff
+before the commit is created.
 
 ## Threat model / non-goals
 

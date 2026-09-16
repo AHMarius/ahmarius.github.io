@@ -297,6 +297,8 @@ export const api = {
     invoke<PdfImportResult>("import_pdf", { sourcePath }),
   buildSite: (mode?: string) => invoke<BuildResult>("build_site", { mode }),
   latestSiteBuild: () => invoke<SiteBuildInfo>("latest_site_build"),
+  readPostAsset: (pageSlug: string, postSlug: string, relPath: string) =>
+    invoke<string>("read_post_asset", { pageSlug, postSlug, relPath }),
   lintPosts: () => invoke<LintReport>("lint_posts"),
   triggerDeployHook: (hookUrl?: string) =>
     invoke<DeployHookResult>("trigger_deploy_hook", { hookUrl }),
@@ -318,6 +320,7 @@ export const api = {
   gitCommit: (message: string) => invoke<string>("git_commit", { message }),
   gitUnstage: (paths?: string[]) => invoke("git_unstage", { paths }),
   gitPush: (branch: string) => invoke<string>("git_push", { branch }),
+  validateDeploySnapshot: () => invoke<void>("validate_deploy_snapshot"),
   deployPages: () => invoke<string>("deploy_pages"),
   gitLastCommit: () => invoke<string>("git_last_commit"),
   gitAuthStatus: () => invoke<any>("git_auth_status"),

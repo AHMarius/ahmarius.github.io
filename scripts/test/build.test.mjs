@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -8,6 +8,88 @@ import { seriesNavHtml } from '../build-devlog.mjs';
 
 const exec = promisify(execFile);
 const REPO = path.resolve(process.cwd());
+const FIXTURE_RUN = `${process.pid}-${Date.now().toString(36)}`;
+const FIXTURE_PAGE = `build-fixture-${FIXTURE_RUN}`;
+const FIXTURE_POST = `build-fixture-solver-${FIXTURE_RUN}`;
+const FIXTURE_DRAFT = `build-fixture-hidden-draft-${FIXTURE_RUN}`;
+const FIXTURE_SUBPAGE = `build-fixture-subpage-${FIXTURE_RUN}`;
+const FIXTURE_ASSET_POST = `build-fixture-asset-${FIXTURE_RUN}`;
+const FIXTURE_TITLE = 'Build Fixture Solver';
+const FIXTURE_DRAFT_TITLE = 'BuildFixtureHiddenDraft';
+const FIXTURE_DIR = path.join(REPO, 'content', 'pages', FIXTURE_PAGE);
+
+before(async () => {
+  // Build tests must not depend on the author's real content. In particular,
+  // deleting the sample content through Content Studio must never make the
+  // publish preflight fail. Use a clearly test-owned page and remove it after
+  // the suite instead.
+  await fs.mkdir(path.join(FIXTURE_DIR, 'posts'), { recursive: true });
+  const subpageDir = path.join(FIXTURE_DIR, 'subpages', FIXTURE_SUBPAGE);
+  await fs.mkdir(path.join(subpageDir, 'posts', FIXTURE_ASSET_POST, 'assets'), { recursive: true });
+  await Promise.all([
+    fs.writeFile(path.join(FIXTURE_DIR, 'page.yml'), `---
+name: "Build fixture"
+slug: "${FIXTURE_PAGE}"
+description: "Temporary content used by the site build tests."
+cover: ""
+parent: null
+order: 9999
+---
+`, 'utf8'),
+    fs.writeFile(path.join(FIXTURE_DIR, 'posts', `${FIXTURE_POST}.md`), `---
+title: "${FIXTURE_TITLE}"
+slug: "${FIXTURE_POST}"
+date: "2026-09-01"
+status: "published"
+page: "${FIXTURE_PAGE}"
+technologies:
+  - C++
+tags:
+  - Simulation
+---
+# ${FIXTURE_TITLE}
+
+This is a test post with inline math $a^2+b^2=c^2$ and a block:
+
+$$
+\\int_0^1 x^2 \\, dx
+$$
+`, 'utf8'),
+    fs.writeFile(path.join(FIXTURE_DIR, 'posts', `${FIXTURE_DRAFT}.md`), `---
+title: "${FIXTURE_DRAFT_TITLE}"
+slug: "${FIXTURE_DRAFT}"
+date: "2026-09-01"
+status: "draft"
+page: "${FIXTURE_PAGE}"
+tags:
+  - Notes
+---
+This is a draft that should never be published.
+`, 'utf8'),
+    fs.writeFile(path.join(subpageDir, 'page.yml'), `---
+name: "Build fixture sub-page"
+slug: "${FIXTURE_SUBPAGE}"
+parent: "${FIXTURE_PAGE}"
+order: 1
+---
+`, 'utf8'),
+    fs.writeFile(path.join(subpageDir, 'posts', `${FIXTURE_ASSET_POST}.md`), `---
+title: "Nested asset fixture"
+slug: "${FIXTURE_ASSET_POST}"
+date: "2026-09-01"
+status: "published"
+page: "${FIXTURE_SUBPAGE}"
+---
+![Nested plot](assets/plot.png)
+`, 'utf8'),
+    fs.writeFile(path.join(subpageDir, 'posts', FIXTURE_ASSET_POST, 'assets', 'plot.png'), 'fixture-png', 'utf8'),
+  ]);
+});
+
+after(async () => {
+  await fs.rm(FIXTURE_DIR, { recursive: true, force: true });
+  await runBuild({ mode: 'publish' });
+});
 
 async function runBuild({ mode } = {}) {
   const args = ['scripts/build-site.mjs'];
@@ -35,15 +117,14 @@ test('devlog.html generates and is not an empty shell', async () => {
 test('devlog aggregates published posts from the canonical content hierarchy', async () => {
   await runBuild();
   const html = await fs.readFile(path.join(REPO, 'devlog.html'), 'utf8');
-  // first-solver is a published post under content/pages/fluid-dynamics/posts
-  assert.match(html, /First Solver/);
-  assert.match(html, /devlog\/first-solver\.html/);
+  assert.match(html, new RegExp(FIXTURE_TITLE));
+  assert.match(html, new RegExp(`devlog/${FIXTURE_POST}\\.html`));
 });
 
 test('devlog generates individual static post pages', async () => {
   await runBuild();
-  const postHtml = await fs.readFile(path.join(REPO, 'devlog', 'first-solver.html'), 'utf8');
-  assert.match(postHtml, /First Solver/);
+  const postHtml = await fs.readFile(path.join(REPO, 'devlog', `${FIXTURE_POST}.html`), 'utf8');
+  assert.match(postHtml, new RegExp(FIXTURE_TITLE));
   // The rendered Markdown content must be in the page, not a placeholder.
   assert.match(postHtml, /katex/);
   assert.match(postHtml, /assets\/css\/style\.css/);
@@ -52,28 +133,28 @@ test('devlog generates individual static post pages', async () => {
 test('preview mode shows drafts so the editor can preview them', async () => {
   await runBuild({ mode: 'preview' });
   const html = await fs.readFile(path.join(REPO, 'devlog.html'), 'utf8');
-  assert.match(html, /HiddenDraftSecret/);
+  assert.match(html, new RegExp(FIXTURE_DRAFT_TITLE));
   // The draft's individual page has been generated in preview mode.
-  await fs.access(path.join(REPO, 'devlog', 'hidden-draft-secret.html'));
+  await fs.access(path.join(REPO, 'devlog', `${FIXTURE_DRAFT}.html`));
 });
 
 test('publish mode hides drafts from the public devlog', async () => {
   await runBuild({ mode: 'publish' });
   const html = await fs.readFile(path.join(REPO, 'devlog.html'), 'utf8');
-  assert.doesNotMatch(html, /HiddenDraftSecret/);
+  assert.doesNotMatch(html, new RegExp(FIXTURE_DRAFT_TITLE));
   // The draft's individual page must not have been generated.
-  await assert.rejects(fs.access(path.join(REPO, 'devlog', 'hidden-draft-secret.html')));
+  await assert.rejects(fs.access(path.join(REPO, 'devlog', `${FIXTURE_DRAFT}.html`)));
 });
 
 test('future scheduled posts stay out of both public post routes', async () => {
-  const scheduledFile = path.join(REPO, 'content', 'pages', 'test', 'posts', 'scheduled-build-test.md');
+  const scheduledFile = path.join(FIXTURE_DIR, 'posts', 'scheduled-build-test.md');
   await fs.writeFile(scheduledFile, `---
 title: "ScheduledBuildSecret"
 slug: "scheduled-build-test"
 date: "2026-09-16"
 status: "published"
 publishAt: "2999-01-01"
-page: "test"
+page: "${FIXTURE_PAGE}"
 ---
 
 This content must not appear in a production build before its schedule.
@@ -81,17 +162,17 @@ This content must not appear in a production build before its schedule.
   try {
     await runBuild({ mode: 'publish' });
     const devlog = await fs.readFile(path.join(REPO, 'devlog.html'), 'utf8');
-    const pageHub = await fs.readFile(path.join(REPO, 'pages', 'test', 'index.html'), 'utf8');
+    const pageHub = await fs.readFile(path.join(REPO, 'pages', FIXTURE_PAGE, 'index.html'), 'utf8');
     const search = await fs.readFile(path.join(REPO, 'search-index.json'), 'utf8');
     assert.doesNotMatch(devlog, /ScheduledBuildSecret/);
     assert.doesNotMatch(pageHub, /ScheduledBuildSecret/);
     assert.doesNotMatch(search, /ScheduledBuildSecret/);
     await assert.rejects(fs.access(path.join(REPO, 'devlog', 'scheduled-build-test.html')));
-    await assert.rejects(fs.access(path.join(REPO, 'pages', 'test', 'scheduled-build-test.html')));
+    await assert.rejects(fs.access(path.join(REPO, 'pages', FIXTURE_PAGE, 'scheduled-build-test.html')));
 
     await runBuild({ mode: 'preview' });
     await fs.access(path.join(REPO, 'devlog', 'scheduled-build-test.html'));
-    await fs.access(path.join(REPO, 'pages', 'test', 'scheduled-build-test.html'));
+    await fs.access(path.join(REPO, 'pages', FIXTURE_PAGE, 'scheduled-build-test.html'));
   } finally {
     await fs.rm(scheduledFile, { force: true });
     await runBuild({ mode: 'publish' });
@@ -100,11 +181,27 @@ This content must not appear in a production build before its schedule.
 
 test('nested devlog pages reference working relative asset paths', async () => {
   await runBuild();
-  const postHtml = await fs.readFile(path.join(REPO, 'devlog', 'first-solver.html'), 'utf8');
+  const postHtml = await fs.readFile(path.join(REPO, 'devlog', `${FIXTURE_POST}.html`), 'utf8');
   assert.match(postHtml, /href="\.\.\/assets\/css\/style\.css"/);
   assert.match(postHtml, /src="\.\.\/assets\/js\/hero-fluid\.js"/);
   const indexHtml = await fs.readFile(path.join(REPO, 'devlog', 'index.html'), 'utf8');
   assert.match(indexHtml, /href="\.\.\/assets\/css\/style\.css"/);
+});
+
+test('nested sub-page post assets are copied and rewritten', async () => {
+  await runBuild({ mode: 'publish' });
+  const postHtml = await fs.readFile(path.join(REPO, 'devlog', `${FIXTURE_ASSET_POST}.html`), 'utf8');
+  assert.match(
+    postHtml,
+    new RegExp(`/assets/posts/${FIXTURE_SUBPAGE}/${FIXTURE_ASSET_POST}/plot\\.png`),
+  );
+  assert.equal(
+    await fs.readFile(
+      path.join(REPO, 'assets', 'posts', FIXTURE_SUBPAGE, FIXTURE_ASSET_POST, 'plot.png'),
+      'utf8',
+    ),
+    'fixture-png',
+  );
 });
 
 test('build-site.mjs stays deterministic across repeated builds', async () => {
@@ -152,7 +249,7 @@ test('publish build generates RSS feed, Atom feed, sitemap, and robots.txt', asy
   const feed = await fs.readFile(path.join(REPO, 'feed.xml'), 'utf8');
   assert.match(feed, /<rss version="2\.0"/);
   assert.match(feed, /<item>/);
-  assert.match(feed, /First Solver/);
+  assert.match(feed, new RegExp(FIXTURE_TITLE));
 
   const atom = await fs.readFile(path.join(REPO, 'atom.xml'), 'utf8');
   assert.match(atom, /<feed xmlns="http:\/\/www\.w3\.org\/2005\/Atom">/);
@@ -160,7 +257,7 @@ test('publish build generates RSS feed, Atom feed, sitemap, and robots.txt', asy
 
   const sitemap = await fs.readFile(path.join(REPO, 'sitemap.xml'), 'utf8');
   assert.match(sitemap, /<urlset/);
-  assert.match(sitemap, /devlog\/first-solver\.html/);
+  assert.match(sitemap, new RegExp(`devlog/${FIXTURE_POST}\\.html`));
 
   const robots = await fs.readFile(path.join(REPO, 'robots.txt'), 'utf8');
   assert.match(robots, /Sitemap: https:\/\/ahmarius\.github\.io\/sitemap\.xml/);
@@ -171,23 +268,23 @@ test('site output never leaks draft content into metadata files', async () => {
   const feed = await fs.readFile(path.join(REPO, 'feed.xml'), 'utf8');
   const sitemap = await fs.readFile(path.join(REPO, 'sitemap.xml'), 'utf8');
   const searchJson = await fs.readFile(path.join(REPO, 'search-index.json'), 'utf8');
-  assert.doesNotMatch(feed, /HiddenDraftSecret/);
-  assert.doesNotMatch(sitemap, /hidden-draft-secret/);
-  assert.doesNotMatch(searchJson, /HiddenDraftSecret/);
+  assert.doesNotMatch(feed, new RegExp(FIXTURE_DRAFT_TITLE));
+  assert.doesNotMatch(sitemap, new RegExp(FIXTURE_DRAFT));
+  assert.doesNotMatch(searchJson, new RegExp(FIXTURE_DRAFT_TITLE));
 });
 
 test('publish build generates tag/tech/project archives', async () => {
   await runBuild({ mode: 'publish' });
   // tag archive exists and contains the linked post
   const tagRef = await fs.readFile(path.join(REPO, 'devlog', 'tag', 'simulation.html'), 'utf8');
-  assert.match(tagRef, /first-solver\.html/);
+  assert.match(tagRef, new RegExp(`${FIXTURE_POST}\\.html`));
   const techRef = await fs.readFile(path.join(REPO, 'devlog', 'tech', 'c.html'), 'utf8');
-  assert.match(techRef, /first-solver\.html/);
+  assert.match(techRef, new RegExp(`${FIXTURE_POST}\\.html`));
 });
 
 test('post pages include OG/Twitter meta, JSON-LD, canonical, and search index entry', async () => {
   await runBuild({ mode: 'publish' });
-  const postHtml = await fs.readFile(path.join(REPO, 'devlog', 'first-solver.html'), 'utf8');
+  const postHtml = await fs.readFile(path.join(REPO, 'devlog', `${FIXTURE_POST}.html`), 'utf8');
   assert.match(postHtml, /property="og:type" content="article"/);
   assert.match(postHtml, /property="og:title"/);
   assert.match(postHtml, /name="twitter:card" content="summary_large_image"/);
@@ -195,48 +292,57 @@ test('post pages include OG/Twitter meta, JSON-LD, canonical, and search index e
   const structuredData = [...postHtml.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
   assert.ok(structuredData.length >= 2);
   structuredData.forEach((match) => assert.doesNotThrow(() => JSON.parse(match[1])));
-  assert.match(postHtml, /rel="canonical" href="https:\/\/ahmarius\.github\.io\/devlog\/first-solver\.html"/);
+  assert.match(postHtml, new RegExp(`rel="canonical" href="https://ahmarius\\.github\\.io/devlog/${FIXTURE_POST}\\.html"`));
   assert.match(postHtml, /type="application\/rss\+xml"/);
 
   const searchIndex = JSON.parse(await fs.readFile(path.join(REPO, 'search-index.json'), 'utf8'));
-  assert.ok(searchIndex.some((e) => e.slug === 'first-solver' && e.url === '/devlog/first-solver.html'));
+  assert.ok(searchIndex.some((e) => e.slug === FIXTURE_POST && e.url === `/devlog/${FIXTURE_POST}.html`));
   assert.ok(searchIndex.some((e) => e.kind === 'site' && e.slug === 'projects'));
-  assert.ok(searchIndex.some((e) => e.kind === 'page' && e.slug === 'fluid-dynamics'));
+  assert.ok(searchIndex.some((e) => e.kind === 'page' && e.slug === FIXTURE_PAGE));
   assert.match(postHtml, /class="post-actions"/);
   assert.match(postHtml, /class="post-print"/);
 });
 
 test('page-hub article copies use the Devlog canonical and article tools', async () => {
   await runBuild({ mode: 'publish' });
-  const html = await fs.readFile(path.join(REPO, 'pages', 'fluid-dynamics', 'first-solver.html'), 'utf8');
-  assert.match(html, /rel="canonical" href="https:\/\/ahmarius\.github\.io\/devlog\/first-solver\.html"/);
+  const html = await fs.readFile(path.join(REPO, 'pages', FIXTURE_PAGE, `${FIXTURE_POST}.html`), 'utf8');
+  assert.match(html, new RegExp(`rel="canonical" href="https://ahmarius\\.github\\.io/devlog/${FIXTURE_POST}\\.html"`));
   assert.match(html, /class="post-actions"/);
   assert.match(html, /assets\/js\/post\.js/);
 });
 
 test('publish mode removes stale draft post pages from page hubs', async () => {
   await runBuild({ mode: 'preview' });
-  await fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'hidden-draft-secret.html'));
+  await fs.access(path.join(REPO, 'pages', FIXTURE_PAGE, `${FIXTURE_DRAFT}.html`));
   await runBuild({ mode: 'publish' });
-  await assert.rejects(fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'hidden-draft-secret.html')));
+  await assert.rejects(fs.access(path.join(REPO, 'pages', FIXTURE_PAGE, `${FIXTURE_DRAFT}.html`)));
   // The published post page survives the publish pass.
-  await fs.access(path.join(REPO, 'pages', 'fluid-dynamics', 'first-solver.html'));
+  await fs.access(path.join(REPO, 'pages', FIXTURE_PAGE, `${FIXTURE_POST}.html`));
 });
 
 test('publish mode removes stale deleted page output and generated assets', async () => {
   const stalePage = path.join(REPO, 'pages', 'removed-page');
   const staleCover = path.join(REPO, 'assets', 'pages', 'removed-page');
-  const stalePostAsset = path.join(REPO, 'assets', 'posts', 'fluid-dynamics', 'hidden-draft-secret');
+  const stalePostAsset = path.join(REPO, 'assets', 'posts', FIXTURE_PAGE, FIXTURE_DRAFT);
   const staleOg = path.join(REPO, 'assets', 'og', 'removed-post.svg');
+  const staleTag = path.join(REPO, 'devlog', 'tag', 'removed-tag.html');
+  const staleTech = path.join(REPO, 'devlog', 'tech', 'removed-tech.html');
+  const staleProject = path.join(REPO, 'devlog', 'project', 'removed-project.html');
   await fs.mkdir(stalePage, { recursive: true });
   await fs.mkdir(staleCover, { recursive: true });
   await fs.mkdir(stalePostAsset, { recursive: true });
   await fs.mkdir(path.dirname(staleOg), { recursive: true });
+  await fs.mkdir(path.dirname(staleTag), { recursive: true });
+  await fs.mkdir(path.dirname(staleTech), { recursive: true });
+  await fs.mkdir(path.dirname(staleProject), { recursive: true });
   await Promise.all([
     fs.writeFile(path.join(stalePage, 'index.html'), 'stale'),
     fs.writeFile(path.join(staleCover, 'cover.png'), 'stale'),
     fs.writeFile(path.join(stalePostAsset, 'draft.png'), 'stale'),
     fs.writeFile(staleOg, 'stale'),
+    fs.writeFile(staleTag, 'stale'),
+    fs.writeFile(staleTech, 'stale'),
+    fs.writeFile(staleProject, 'stale'),
   ]);
 
   await runBuild({ mode: 'publish' });
@@ -246,6 +352,9 @@ test('publish mode removes stale deleted page output and generated assets', asyn
     assert.rejects(fs.access(staleCover)),
     assert.rejects(fs.access(stalePostAsset)),
     assert.rejects(fs.access(staleOg)),
+    assert.rejects(fs.access(staleTag)),
+    assert.rejects(fs.access(staleTech)),
+    assert.rejects(fs.access(staleProject)),
   ]);
 });
 
@@ -254,5 +363,5 @@ test('feed/sitemap/robots are not generated in preview mode before publish', asy
   await runBuild({ mode: 'preview' });
   // feed/sitemap are always safe because they only use published posts.
   const feed = await fs.readFile(path.join(REPO, 'feed.xml'), 'utf8');
-  assert.doesNotMatch(feed, /HiddenDraftSecret/);
+  assert.doesNotMatch(feed, new RegExp(FIXTURE_DRAFT_TITLE));
 });

@@ -29,10 +29,17 @@ The canonical build lives at `scripts/build-site.mjs` (`npm run build`), which:
    `content/pages` and renders `devlog.html` + `devlog/*.html`).
 3. Runs `scripts/build-pages.mjs` (renders the Pages hierarchy under
    `pages.html` + `pages/*.html`).
+4. Recreates generated tag, technology, and project archive directories, so
+   deleted or renamed metadata cannot leave stale public archive URLs.
+5. In publish mode, creates an allowlisted `dist/` snapshot for `gh-pages`.
 
 Both the Devlog and the Pages system consume the same post parser and same
 content source, so a post published from the Admin App appears automatically
 on the Devlog with no manual copying.
+
+The build tests create their own temporary content page and remove it at suite
+exit. Tests therefore do not rely on—or restore—any real post, and deleting the
+last user page cannot make the Publish preflight fail.
 
 ## Legacy `content/devlog/`
 

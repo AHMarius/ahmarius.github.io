@@ -52,8 +52,18 @@
     </div>
     
     <header class="page-header devlog-header">
-      <p class="section-eyebrow">Project notes</p>
-      <h1>Devlog</h1>
+      <div class="devlog-intro">
+        <div>
+          <p class="section-eyebrow">Build notes · decisions · experiments</p>
+          <h1>Devlog</h1>
+          <p class="devlog-lede">A working notebook about the systems I build, the trade-offs behind them, and what I learn when the first idea breaks.</p>
+        </div>
+        <dl class="devlog-stats" aria-label="Devlog summary">
+          <div><dt>0</dt><dd>notes</dd></div>
+          <div><dt>0</dt><dd>topics</dd></div>
+          <div><dt>0</dt><dd>technologies</dd></div>
+        </dl>
+      </div>
     </header>
     <main id="main-content" class="devlog-shell">
             <section class="devlog-toolbar" aria-label="Devlog filters">
@@ -65,21 +75,21 @@
           <label for="devlog-tag">Tag</label>
           <select id="devlog-tag">
             <option value="all">All tags</option>
-            <option value="Simulation">Simulation</option>
+
           </select>
         </div>
         <div class="devlog-filter">
           <label for="devlog-tech">Technology</label>
           <select id="devlog-tech">
             <option value="all">All technologies</option>
-            <option value="C++">C++</option>
+
           </select>
         </div>
         <div class="devlog-filter">
           <label for="devlog-project">Project</label>
           <select id="devlog-project">
             <option value="all">All projects</option>
-            
+
           </select>
         </div>
         <div class="devlog-filter">
@@ -88,43 +98,23 @@
             <option value="all">All</option><option value="published">Published</option>
           </select>
         </div>
+        <div class="devlog-filter">
+          <label for="devlog-sort">Sort</label>
+          <select id="devlog-sort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="shortest">Quick reads first</option>
+            <option value="longest">Long reads first</option>
+          </select>
+        </div>
+        <div class="devlog-toolbar-actions">
+          <span id="devlog-count" class="devlog-result-count" aria-live="polite"></span>
+          <button id="devlog-view" class="devlog-icon-button" type="button" aria-pressed="false" title="Toggle compact list">☷ <span>List</span></button>
+          <button id="devlog-reset" class="devlog-icon-button" type="button">Reset</button>
+        </div>
       </section>
-      <div class="devlog-grid">
-    <article class="devlog-card" data-search="434r34 rrr test  " data-tags="" data-technologies="" data-project="" data-status="published">
-      <div class="devlog-card-header">
-        <h3 class="devlog-card-title">434r34</h3>
-        <span class="devlog-meta">2026-09-15</span>
-      </div>
-      <p>rrr</p>
-      <div class="devlog-tags"></div>
-      <div class="devlog-tech"></div>
-      <div class="devlog-links">
-        <span class="devlog-meta">1 min read</span>
-        
-        <span class="devlog-meta devlog-page">test</span>
-        <a class="devlog-link" href="devlog/434r34.html">Read article</a>
-        <button type="button" class="devlog-share" data-url="devlog/434r34.html" aria-label="Share this post">Share</button>
-      </div>
-    </article>
-  
-
-    <article class="devlog-card" data-search="First Solver First Solver This is a test post with inline math and a block: FluidDynamics Simulation C++" data-tags="Simulation" data-technologies="C++" data-project="" data-status="published">
-      <div class="devlog-card-header">
-        <h3 class="devlog-card-title">First Solver</h3>
-        <span class="devlog-meta">2026-09-01</span>
-      </div>
-      <p>First Solver This is a test post with inline math and a block:</p>
-      <div class="devlog-tags"><a class="devlog-tag" href="devlog/tag/simulation.html">Simulation</a></div>
-      <div class="devlog-tech"><a class="devlog-tech-item" href="devlog/tech/c.html">C++</a></div>
-      <div class="devlog-links">
-        <span class="devlog-meta">1 min read</span>
-        
-        <span class="devlog-meta devlog-page">FluidDynamics</span>
-        <a class="devlog-link" href="devlog/first-solver.html">Read article</a>
-        <button type="button" class="devlog-share" data-url="devlog/first-solver.html" aria-label="Share this post">Share</button>
-      </div>
-    </article>
-  </div>
+      <div class="devlog-section-head"><div><p class="section-eyebrow">Browse the notebook</p><h2>Latest notes</h2></div><a class="devlog-feed-link" href="feed.xml">RSS feed ↗</a></div>
+      <div class="devlog-grid"></div>
       <div id="devlog-empty" class="devlog-empty">No posts match the current filters.</div>
     </main>
   

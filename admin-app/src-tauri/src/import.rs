@@ -1,4 +1,5 @@
 use crate::{AppError, AppResult, resolve_in_repo, ensure_safe_slug};
+use crate::content::post_assets_dir_of;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -59,12 +60,13 @@ pub fn import_cover(
 
     let file_name = format!("cover.{}", ext);
     let bytes = std::fs::read(&source)?;
-    let (target_rel, public_path) = if kind == "post" {
+    let (target, target_rel, public_path) = if kind == "post" {
         let page = ensure_safe_slug(page_slug)?;
         let post = ensure_safe_slug(post_slug)?;
-        let target_rel = format!("content/pages/{}/posts/{}/assets/{}", page, post, file_name);
+        let target = post_assets_dir_of(repo, &page, &post)?.join(&file_name);
+        let target_rel = repo_relative(repo, &target)?;
         let public_path = format!("assets/posts/{}/{}/{}", page, post, file_name);
-        (target_rel, public_path)
+        (target, target_rel, public_path)
     } else {
         let slug = ensure_safe_slug(if kind == "page" { page_slug } else { post_slug })?;
         let target_rel = if kind == "page" {
@@ -72,10 +74,10 @@ pub fn import_cover(
         } else {
             format!("content/projects/{}/{}", slug, file_name)
         };
-        (target_rel.clone(), target_rel)
+        let target = resolve_in_repo(repo, &target_rel)?;
+        (target, target_rel.clone(), target_rel)
     };
 
-    let target = resolve_in_repo(repo, &target_rel)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -163,9 +165,10 @@ pub fn import_asset_bytes(
     }
     let mut warning = None;
     if data.len() > MAX_VIDEO_BYTES as usize {
-        warning = Some(format!(
+        warning = Some(
             "This file is larger than 25 MiB. Consider external hosting to keep the repo small."
-        ));
+                .to_string(),
+        );
     }
     write_asset_bytes(repo, page_slug, post_slug, file_name, data, warning)
 }
@@ -180,10 +183,7 @@ fn write_asset_bytes(
 ) -> AppResult<ImportAssetResult> {
     let page_slug = ensure_safe_slug(page_slug)?;
     let post_slug = ensure_safe_slug(post_slug)?;
-    let assets_dir = resolve_in_repo(
-        repo,
-        &format!("content/pages/{}/posts/{}/assets", page_slug, post_slug),
-    )?;
+    let assets_dir = post_assets_dir_of(repo, &page_slug, &post_slug)?;
     std::fs::create_dir_all(&assets_dir)?;
 
     let base = sanitize_filename(file_name);
@@ -213,6 +213,14 @@ fn write_asset_bytes(
         rel_path: format!("assets/{}", candidate),
         warning,
     })
+}
+
+fn repo_relative(repo: &Path, path: &Path) -> AppResult<String> {
+    let root = repo.canonicalize().map_err(AppError::from)?;
+    path.strip_prefix(&root)
+        .or_else(|_| path.strip_prefix(repo))
+        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+        .map_err(|_| AppError::Validation("Imported asset path escaped the repository.".into()))
 }
 
 /// Capture the screen (best-effort via the OS screenshot tool), save it
@@ -315,7 +323,7 @@ pub fn import_pdf(repo: &Path, source_path: &str) -> AppResult<PdfImportResult> 
         .map_err(|_| AppError::Command("pdftotext failed to run.".into()))?;
 
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let is_image_only = text.trim().split_whitespace().count() < 20;
+    let is_image_only = text.split_whitespace().count() < 20;
 
     let title = source
         .file_stem()
@@ -408,6 +416,28 @@ mod tests {
         import_asset(&repo, "fluid", "demo", src.to_str().unwrap(), "My Shot.png").unwrap();
         let res2 = import_asset(&repo, "fluid", "demo", src.to_str().unwrap(), "My Shot.png").unwrap();
         assert!(res2.file_name.starts_with("my-shot-1"));
+        std::fs::remove_dir_all(&repo).ok();
+    }
+
+    #[test]
+    fn nested_page_assets_follow_the_real_post_directory() {
+        let repo = fresh_repo();
+        let nested = repo.join("content/pages/fluid/subpages/gpu/posts/nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        let src = repo.join("nested.png");
+        std::fs::write(&src, b"nested-png").unwrap();
+
+        let result = import_asset(
+            &repo,
+            "gpu",
+            "nested",
+            src.to_str().unwrap(),
+            "Nested.png",
+        )
+        .unwrap();
+        assert_eq!(result.rel_path, "assets/nested.png");
+        assert!(nested.join("assets/nested.png").is_file());
+        assert!(!repo.join("content/pages/gpu").exists());
         std::fs::remove_dir_all(&repo).ok();
     }
 

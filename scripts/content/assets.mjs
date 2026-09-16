@@ -15,7 +15,9 @@ export function postAssetsBase(page, slug) {
 /** Copy one post's local assets folder into the published assets tree. */
 export async function copyPostAssets(post) {
   const page = post.page || post.pageSlug;
-  const src = path.join(ROOT, 'content', 'pages', page, 'posts', post.slug, 'assets');
+  const src = post.sourcePath
+    ? path.join(path.dirname(post.sourcePath), path.basename(post.sourcePath, path.extname(post.sourcePath)), 'assets')
+    : path.join(ROOT, 'content', 'pages', page, 'posts', post.slug, 'assets');
   const dst = path.join(POST_ASSETS_DIR, page, post.slug);
   let entries = [];
   try {

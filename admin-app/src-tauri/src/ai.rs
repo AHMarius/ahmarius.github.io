@@ -84,7 +84,7 @@ fn strip_markdown(markdown: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-        .replace(|c| c == '*' || c == '`' || c == '_' || c == '~', "")
+        .replace(['*', '`', '_', '~'], "")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

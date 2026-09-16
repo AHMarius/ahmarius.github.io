@@ -7,6 +7,16 @@ export function renderKatex(latex: string, displayMode: boolean): string {
       displayMode,
       throwOnError: false,
       output: "html",
+      strict: false,
+      trust: false,
+      maxExpand: 1000,
+      macros: {
+        "\\RR": "\\mathbb{R}",
+        "\\NN": "\\mathbb{N}",
+        "\\ZZ": "\\mathbb{Z}",
+        "\\QQ": "\\mathbb{Q}",
+        "\\CC": "\\mathbb{C}",
+      },
     });
   } catch (e) {
     return `<span class="math-invalid">${escapeHtml(latex)}</span>`;
@@ -36,15 +46,87 @@ function slugifyHeading(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function safeHref(value: string): string {
+  const href = value.trim();
+  if (
+    /^(?:https?:|mailto:)/i.test(href) ||
+    /^(?:[./#]|[^:]+$)/.test(href)
+  ) {
+    return escapeHtml(href);
+  }
+  return "#";
+}
+
+function looksLikeCurrencyProse(latex: string): boolean {
+  return /^\d+(?:[.,]\d+)?(?:\s+[A-Za-z]{2,}|,\s*[A-Za-z])/.test(latex);
+}
+
 function inline(text: string): string {
-  let out = escapeHtml(text);
+  const held: string[] = [];
+  const hold = (html: string) => `\u0000${held.push(html) - 1}\u0000`;
+  let source = String(text);
+
+  // Protect code and links before looking for math delimiters. This matches
+  // the public renderer: `$...$` inside a code span or URL stays literal.
+  source = source.replace(/`([^`\n]+)`/g, (_, code) => hold(`<code>${escapeHtml(code)}</code>`));
+  source = source.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, href) =>
+    hold(`<a href="${safeHref(href)}">${escapeHtml(label)}</a>`),
+  );
+  source = source.replace(/\\\(((?:\\.|[^\\\n])*?)\\\)/g, (_, latex) =>
+    hold(renderKatex(latex, false)),
+  );
+  source = source.replace(
+    /(?<!\\)\$(?!\$)((?:\\.|[^\\$\n])+?)(?<!\\)\$(?!\$|\d)/g,
+    (match, latex) => (looksLikeCurrencyProse(latex) ? match : hold(renderKatex(latex, false))),
+  );
+
+  let out = escapeHtml(source);
   out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   out = out.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
   out = out.replace(/~~(.+?)~~/g, "<del>$1</del>");
-  out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
-  out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
-  out = out.replace(/\$([^$\n]+?)\$/g, (_, l) => renderKatex(l, false));
+  out = out.replace(/&lt;u&gt;(.+?)&lt;\/u&gt;/g, "<u>$1</u>");
+  out = out.replace(/\u0000(\d+)\u0000/g, (_, index) => held[Number(index)] ?? "");
   return out;
+}
+
+const DISPLAY_ENVIRONMENT = /^(equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|flalign\*?|split|cases|[pbBvV]?matrix|array|CD)$/;
+
+function displayMathAt(lines: string[], start: number): { latex: string; end: number } | null {
+  const first = lines[start].trim();
+  const delimited = (open: string, close: string) => {
+    if (!first.startsWith(open)) return null;
+    const afterOpen = first.slice(open.length);
+    if (afterOpen.endsWith(close) && afterOpen.length >= close.length) {
+      return { latex: afterOpen.slice(0, -close.length).trim(), end: start };
+    }
+    const body: string[] = [];
+    if (afterOpen) body.push(afterOpen);
+    for (let i = start + 1; i < lines.length; i += 1) {
+      const candidate = lines[i].trimEnd();
+      if (candidate.trim().endsWith(close)) {
+        const closing = candidate.lastIndexOf(close);
+        if (closing > 0) body.push(candidate.slice(0, closing));
+        return { latex: body.join("\n").trim(), end: i };
+      }
+      body.push(lines[i]);
+    }
+    return null;
+  };
+
+  const dollars = delimited("$$", "$$");
+  if (dollars) return dollars;
+  const brackets = delimited("\\[", "\\]");
+  if (brackets) return brackets;
+
+  const begin = /^\\begin\{([^}]+)\}/.exec(first);
+  if (!begin || !DISPLAY_ENVIRONMENT.test(begin[1])) return null;
+  const close = `\\end{${begin[1]}}`;
+  for (let i = start; i < lines.length; i += 1) {
+    if (lines[i].includes(close)) {
+      return { latex: lines.slice(start, i + 1).join("\n").trim(), end: i };
+    }
+  }
+  return null;
 }
 
 export function markdownToHtml(markdown: string): string {
@@ -104,7 +186,8 @@ export function markdownToHtmlDetailed(markdown: string): { html: string; headin
     tableBuf = [];
   };
 
-  for (const raw of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const raw = lines[lineIndex];
     const line = raw.trimEnd();
     if (line.startsWith("```")) {
       flushParagraph();
@@ -131,6 +214,28 @@ export function markdownToHtmlDetailed(markdown: string): { html: string; headin
       flushTable();
       continue;
     }
+    const displayMath = displayMathAt(lines, lineIndex);
+    if (displayMath) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      flushTable();
+      html.push(`<div class="math-block">${renderKatex(displayMath.latex, true)}</div>`);
+      lineIndex = displayMath.end;
+      continue;
+    }
+    const video = /^<video src="([^"<>\n]+)" controls preload="metadata"><\/video>$/.exec(line.trim());
+    const embeddedVideo = /^<div class="video-embed"><iframe src="https:\/\/(?:www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]+|player\.vimeo\.com\/video\/\d+)" title="Embedded video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen><\/iframe><\/div>$/.test(line.trim());
+    if ((video && safeHref(video[1]) !== "#") || embeddedVideo) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      flushTable();
+      html.push(video
+        ? `<video src="${safeHref(video[1])}" controls preload="metadata"></video>`
+        : line.trim());
+      continue;
+    }
     if (line.startsWith("|") && line.endsWith("|")) {
       flushParagraph();
       flushList();
@@ -143,15 +248,6 @@ export function markdownToHtmlDetailed(markdown: string): { html: string; headin
         continue;
       }
       tableBuf.push(cells);
-      continue;
-    }
-    if (line.startsWith("$$")) {
-      flushParagraph();
-      flushList();
-      flushQuote();
-      flushTable();
-      const latex = line.replace(/^\$\$/, "").replace(/\$\$$/, "");
-      html.push(`<div class="math-block">${renderKatex(latex, true)}</div>`);
       continue;
     }
     if (line.startsWith("> ")) {

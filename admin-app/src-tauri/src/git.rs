@@ -325,8 +325,10 @@ pub fn git_commit(repo: &Path, message: &str) -> AppResult<String> {
     } else {
         message
     };
-    let out = run_git(repo, &["commit", "-m", msg])?;
-    Ok(out)
+    run_git(repo, &["commit", "-m", msg])?;
+    Ok(run_git(repo, &["rev-parse", "--short", "HEAD"])?
+        .trim()
+        .to_string())
 }
 
 /// Unstage the given paths (or the whole index when `paths` is empty) so a
@@ -368,7 +370,8 @@ pub fn git_push(repo: &Path, branch: &str) -> AppResult<String> {
 
 /// Deploy the validated public snapshot without switching or cleaning the
 /// source checkout. Only dist/ reaches the gh-pages branch.
-pub fn deploy_pages(repo: &Path) -> AppResult<String> {
+pub fn validate_deploy_snapshot(repo: &Path) -> AppResult<()> {
+    ensure_snapshot_inputs_clean(repo)?;
     let dist = repo.join("dist");
     if !dist.join("index.html").is_file() || !dist.join("devlog.html").is_file() {
         return Err(AppError::Validation(
@@ -396,6 +399,14 @@ pub fn deploy_pages(repo: &Path) -> AppResult<String> {
             )));
         }
     }
+    Ok(())
+}
+
+/// Deploy the validated public snapshot without switching or cleaning the
+/// source checkout. Only dist/ reaches the gh-pages branch.
+pub fn deploy_pages(repo: &Path) -> AppResult<String> {
+    validate_deploy_snapshot(repo)?;
+    let dist = repo.join("dist");
 
     let remote = run_git(repo, &["remote", "get-url", "origin"])?;
     let remote = remote.trim();
@@ -450,6 +461,92 @@ pub fn deploy_pages(repo: &Path) -> AppResult<String> {
 
     let _ = std::fs::remove_dir_all(&checkout);
     result
+}
+
+/// The deployed snapshot must be reproducible from the source commit that was
+/// just pushed. `dist/` is allowed to be untracked, but an uncommitted source,
+/// generated page, or public asset would otherwise be copied to gh-pages even
+/// though it does not exist on `main`.
+fn ensure_snapshot_inputs_clean(repo: &Path) -> AppResult<()> {
+    let raw = run_git(repo, &["status", "--porcelain=v1", "-z"])?;
+    let mut dirty = Vec::new();
+    let mut entries = raw.split('\0').filter(|entry| !entry.is_empty());
+    while let Some(entry) = entries.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let x = entry.as_bytes()[0] as char;
+        let y = entry.as_bytes()[1] as char;
+        let path = &entry[3..];
+        if is_snapshot_input(path) {
+            dirty.push(path.to_string());
+        }
+        if matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C') {
+            if let Some(previous) = entries.next() {
+                if is_snapshot_input(previous) {
+                    dirty.push(previous.to_string());
+                }
+            }
+        }
+    }
+    dirty.sort();
+    dirty.dedup();
+    if dirty.is_empty() {
+        return Ok(());
+    }
+    let shown = dirty.iter().take(12).cloned().collect::<Vec<_>>().join("\n");
+    let more = dirty.len().saturating_sub(12);
+    let suffix = if more > 0 {
+        format!("\n…and {more} more")
+    } else {
+        String::new()
+    };
+    Err(AppError::Validation(format!(
+        "Refusing to deploy a snapshot containing uncommitted site inputs. Commit or revert these paths, rebuild, and publish again:\n{shown}{suffix}"
+    )))
+}
+
+fn is_snapshot_input(path: &str) -> bool {
+    const ROOT_FILES: &[&str] = &[
+        "about.html",
+        "atom.xml",
+        "devlog.html",
+        "feed.xml",
+        "game-player.html",
+        "games.html",
+        "index.html",
+        "pages.html",
+        "projects.html",
+        "robots.txt",
+        "search-index.json",
+        "sitemap.xml",
+        "package.json",
+        "package-lock.json",
+    ];
+    const ROOT_DIRS: &[&str] = &[
+        "assets",
+        "BikeRider",
+        "ClearVision",
+        "content",
+        "devlog",
+        "ED",
+        "FluidDynamics",
+        "games",
+        "GraphingTool",
+        "ImageEdit",
+        "IronHalo",
+        "KeyboardHero",
+        "Misc",
+        "pages",
+        "PongPP",
+        "scripts",
+        "Snek",
+        "Tower",
+    ];
+    ROOT_FILES.contains(&path)
+        || ROOT_DIRS
+            .iter()
+            .any(|root| path == *root || path.starts_with(&format!("{root}/")))
 }
 
 fn run_git_verbose(repo: &Path, args: &[&str]) -> AppResult<String> {
@@ -716,18 +813,18 @@ mod tests {
         // Built from fragments at runtime so the literal text never appears in
         // the scanned source (which would cause a false positive).
         // The reset fragment is intentionally not used; kept as a documented guard.
-        let mut v = Vec::new();
-        v.push(["clean", " -f", "d"].concat());
-        v.push(["clean", " -f", "xd"].concat());
-        v.push(["push", " --fo", "rce"].concat());
-        v.push(["push", " -f"].concat());
-        v.push(["push", " +"].concat());
-        v.push(["rebase", " -i"].concat());
-        v.push(["filter-br", "anch"].concat());
-        v.push(["stash", " pop"].concat());
-        v.push(["add", " -A"].concat());
-        v.push(["add", " ."].concat());
-        v
+        vec![
+            ["clean", " -f", "d"].concat(),
+            ["clean", " -f", "xd"].concat(),
+            ["push", " --fo", "rce"].concat(),
+            ["push", " -f"].concat(),
+            ["push", " +"].concat(),
+            ["rebase", " -i"].concat(),
+            ["filter-br", "anch"].concat(),
+            ["stash", " pop"].concat(),
+            ["add", " -A"].concat(),
+            ["add", " ."].concat(),
+        ]
     }
 
     #[test]
@@ -795,6 +892,20 @@ mod tests {
         assert_eq!(status.staged.len(), 1);
         assert_eq!(status.staged[0].path, "content/deleted.md");
         assert_eq!(status.staged[0].status, "deleted");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn commit_returns_the_new_short_hash() {
+        let dir = repo();
+        fs::write(dir.join("content/committed.md"), "content").unwrap();
+        git_stage_paths(&dir, &["content/committed.md".to_string()]).unwrap();
+        let hash = git_commit(&dir, "Commit fixture").unwrap();
+        let expected = run_git(&dir, &["rev-parse", "--short", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_string();
+        assert_eq!(hash, expected);
         fs::remove_dir_all(&dir).ok();
     }
 
@@ -872,6 +983,26 @@ mod tests {
         let error = deploy_pages(&dir).unwrap_err().to_string();
         assert!(error.contains("sync-service"));
 
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn deployment_rejects_uncommitted_public_inputs() {
+        let dir = repo();
+        fs::create_dir_all(dir.join("assets/css")).unwrap();
+        fs::write(dir.join("assets/css/site.css"), "before").unwrap();
+        run_git(&dir, &["add", "--", "assets/css/site.css"]).unwrap();
+        run_git(&dir, &["commit", "-m", "Initial source"]).unwrap();
+        fs::write(dir.join("assets/css/site.css"), "after").unwrap();
+
+        let dist = dir.join("dist");
+        fs::create_dir_all(&dist).unwrap();
+        fs::write(dist.join("index.html"), "home").unwrap();
+        fs::write(dist.join("devlog.html"), "devlog").unwrap();
+
+        let error = deploy_pages(&dir).unwrap_err().to_string();
+        assert!(error.contains("uncommitted site inputs"));
+        assert!(error.contains("assets/css/site.css"));
         fs::remove_dir_all(&dir).ok();
     }
 

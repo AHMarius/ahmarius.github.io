@@ -75,6 +75,7 @@ async function loadAllPosts(onlyPublished = false) {
       const { meta, body } = parseFrontmatter(
         await fs.readFile(path.join(postsDir, entry.name), 'utf8'),
       );
+      const sourcePath = path.join(postsDir, entry.name);
       assertValidMeta(entry.name, validatePostMeta(meta), onlyPublished);
       const slug = meta.slug || entry.name.replace(/\.md$/, '');
       const publishAt = meta.publishAt || meta.publish_at || '';
@@ -94,6 +95,7 @@ async function loadAllPosts(onlyPublished = false) {
         tags: Array.isArray(meta.tags) ? meta.tags : [],
         technologies: Array.isArray(meta.technologies) ? meta.technologies : [],
         project: meta.project || '',
+        subtitle: meta.subtitle || '',
         series: meta.series || '',
         part: Number.parseInt(meta.part, 10) || 0,
         cover: meta.cover || '',
@@ -102,6 +104,7 @@ async function loadAllPosts(onlyPublished = false) {
         pageName: page.name,
         readTime: buildReadTime(body),
         body,
+        sourcePath,
       };
       posts.push(post);
     }
@@ -120,6 +123,7 @@ async function loadAllPosts(onlyPublished = false) {
     const { meta, body } = parseFrontmatter(
       await fs.readFile(path.join(LEGACY_CONTENT_DIR, entry.name), 'utf8'),
     );
+    const sourcePath = path.join(LEGACY_CONTENT_DIR, entry.name);
     assertValidMeta(entry.name, validatePostMeta(meta), onlyPublished);
     const slug = meta.slug || entry.name.replace(/\.md$/, '');
     const publishAt = meta.publishAt || meta.publish_at || '';
@@ -138,6 +142,7 @@ async function loadAllPosts(onlyPublished = false) {
       tags: Array.isArray(meta.tags) ? meta.tags : [],
       technologies: Array.isArray(meta.technologies) ? meta.technologies : [],
       project: meta.project || '',
+      subtitle: meta.subtitle || '',
       series: meta.series || '',
       part: Number.parseInt(meta.part, 10) || 0,
       cover: meta.cover || '',
@@ -146,6 +151,7 @@ async function loadAllPosts(onlyPublished = false) {
       pageName: 'Devlog',
       readTime: buildReadTime(body),
       body,
+      sourcePath,
     };
     posts.push(post);
   }
@@ -170,15 +176,19 @@ function cardMarkup(post, nested = false) {
     : '';
   const tags = (post.tags || []).map((tag) => `<a class="devlog-tag" href="${archiveDir}tag/${archiveSlug(tag)}.html">${escapeHtml(tag)}</a>`).join('');
   const techs = (post.technologies || []).map((tech) => `<a class="devlog-tech-item" href="${archiveDir}tech/${archiveSlug(tech)}.html">${escapeHtml(tech)}</a>`).join('');
+  const minutes = Number.parseInt(post.readTime, 10) || 1;
   return `
-    <article class="devlog-card" data-search="${escapeAttribute(
+    <article class="devlog-card${post.featured ? ' is-featured' : ''}" data-search="${escapeAttribute(
       `${post.title} ${post.excerpt} ${post.pageName} ${post.tags.join(' ')} ${post.technologies.join(' ')}`,
     )}" data-tags="${escapeAttribute(post.tags.join(' '))}" data-technologies="${escapeAttribute(
       post.technologies.join(' '),
-    )}" data-project="${escapeAttribute(post.project)}" data-status="${escapeAttribute(post.status)}">
+    )}" data-project="${escapeAttribute(post.project)}" data-status="${escapeAttribute(post.status)}" data-date="${escapeAttribute(post.date)}" data-minutes="${minutes}">
+      <div class="devlog-card-kicker">
+        <span>${post.featured ? 'Featured note' : 'Engineering note'}</span>
+        <time datetime="${escapeAttribute(post.date)}">${escapeHtml(post.date)}</time>
+      </div>
       <div class="devlog-card-header">
-        <h3 class="devlog-card-title">${escapeHtml(post.title)}</h3>
-        <span class="devlog-meta">${escapeHtml(post.date)}</span>
+        <h3 class="devlog-card-title"><a href="${postHref}">${escapeHtml(post.title)}</a></h3>
       </div>
       <p>${escapeHtml(post.excerpt)}</p>
       <div class="devlog-tags">${tags}</div>
@@ -221,21 +231,21 @@ function toolbarOptions(posts, onlyPublished = false) {
           <label for="devlog-tag">Tag</label>
           <select id="devlog-tag">
             <option value="all">All tags</option>
-            ${tagOptions}
+${tagOptions}
           </select>
         </div>
         <div class="devlog-filter">
           <label for="devlog-tech">Technology</label>
           <select id="devlog-tech">
             <option value="all">All technologies</option>
-            ${techOptions}
+${techOptions}
           </select>
         </div>
         <div class="devlog-filter">
           <label for="devlog-project">Project</label>
           <select id="devlog-project">
             <option value="all">All projects</option>
-            ${projectOptions}
+${projectOptions}
           </select>
         </div>
         <div class="devlog-filter">
@@ -244,18 +254,45 @@ function toolbarOptions(posts, onlyPublished = false) {
             ${statusOption}
           </select>
         </div>
+        <div class="devlog-filter">
+          <label for="devlog-sort">Sort</label>
+          <select id="devlog-sort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="shortest">Quick reads first</option>
+            <option value="longest">Long reads first</option>
+          </select>
+        </div>
+        <div class="devlog-toolbar-actions">
+          <span id="devlog-count" class="devlog-result-count" aria-live="polite"></span>
+          <button id="devlog-view" class="devlog-icon-button" type="button" aria-pressed="false" title="Toggle compact list">☷ <span>List</span></button>
+          <button id="devlog-reset" class="devlog-icon-button" type="button">Reset</button>
+        </div>
       </section>`;
 }
 
 export function indexContent(posts, nested = false, onlyPublished = false) {
   const cards = posts.map((post) => cardMarkup(post, nested)).join('\n');
+  const tagCount = new Set(posts.flatMap((post) => post.tags || [])).size;
+  const techCount = new Set(posts.flatMap((post) => post.technologies || [])).size;
   return `
     <header class="page-header devlog-header">
-      <p class="section-eyebrow">Project notes</p>
-      <h1>Devlog</h1>
+      <div class="devlog-intro">
+        <div>
+          <p class="section-eyebrow">Build notes · decisions · experiments</p>
+          <h1>Devlog</h1>
+          <p class="devlog-lede">A working notebook about the systems I build, the trade-offs behind them, and what I learn when the first idea breaks.</p>
+        </div>
+        <dl class="devlog-stats" aria-label="Devlog summary">
+          <div><dt>${posts.length}</dt><dd>${posts.length === 1 ? 'note' : 'notes'}</dd></div>
+          <div><dt>${tagCount}</dt><dd>${tagCount === 1 ? 'topic' : 'topics'}</dd></div>
+          <div><dt>${techCount}</dt><dd>technologies</dd></div>
+        </dl>
+      </div>
     </header>
     <main id="main-content" class="devlog-shell">
       ${toolbarOptions(posts, onlyPublished)}
+      <div class="devlog-section-head"><div><p class="section-eyebrow">Browse the notebook</p><h2>Latest notes</h2></div><a class="devlog-feed-link" href="${nested ? '../' : ''}feed.xml">RSS feed ↗</a></div>
       <div class="devlog-grid">${cards}</div>
       <div id="devlog-empty" class="devlog-empty">No posts match the current filters.</div>
     </main>
@@ -352,11 +389,15 @@ export function postPage(post, seriesNav = '', related = []) {
       postHeadExtras(post, { cover: ogCover }) +
       umamiScript(studioConfig),
     content: `
+      <div class="reading-progress" aria-hidden="true"><span></span></div>
       <article class="devlog-post" id="main-content">
         <div class="devlog-article">
-          <a class="devlog-link" href="${backHref}">← All posts</a>
-          <div class="devlog-meta">${escapeHtml(post.date)} • ${escapeHtml(post.readTime)}</div>
-          <h1>${escapeHtml(post.title)}</h1>
+          <header class="devlog-article-header">
+            <a class="devlog-back" href="${backHref}">← All notes</a>
+            <div class="devlog-meta"><time datetime="${escapeAttribute(post.date)}">${escapeHtml(post.date)}</time><span>•</span><span>${escapeHtml(post.readTime)}</span>${post.pageName ? `<span>•</span><span>${escapeHtml(post.pageName)}</span>` : ''}</div>
+            <h1>${escapeHtml(post.title)}</h1>
+            ${post.subtitle ? `<p class="devlog-article-subtitle">${escapeHtml(post.subtitle)}</p>` : ''}
+          </header>
           <div class="post-actions" aria-label="Article actions">
             <button type="button" class="devlog-share" data-url="/devlog/${escapeAttribute(post.slug)}.html">Share</button>
             <button type="button" class="post-print">Print / save PDF</button>
@@ -376,6 +417,14 @@ export function postPage(post, seriesNav = '', related = []) {
 }
 
 async function buildArchives(posts, devlogDir) {
+  // Archive pages are entirely generated. Recreate these directories so
+  // removing or renaming the final tag/technology/project cannot leave a
+  // stale public page behind.
+  await Promise.all(
+    ['tag', 'tech', 'project'].map((kind) =>
+      fs.rm(path.join(devlogDir, kind), { recursive: true, force: true }),
+    ),
+  );
   const archives = [];
   const renderArchive = (label, values, kind) => {
     const slug = archiveSlug(label);

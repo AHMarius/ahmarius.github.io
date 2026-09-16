@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "admin": "./start.sh",
+    "admin:dev": "npm --prefix admin-app run tauri dev",
+    "admin:test": "npm --prefix admin-app test && cargo test --manifest-path admin-app/src-tauri/Cargo.toml",
     "build": "node scripts/build-site.mjs",
     "dev": "node scripts/serve.mjs",
     "preview": "node scripts/serve.mjs",
@@ -13,7 +16,7 @@
   },
   "devDependencies": {
     "gray-matter": "^4.0.3",
-    "katex": "^0.16.11",
+    "katex": "0.18.5",
     "marked": "^18.0.11"
   }
 }

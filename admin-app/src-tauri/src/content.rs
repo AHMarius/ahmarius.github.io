@@ -307,13 +307,11 @@ pub fn serialize_page(page: &PageInput) -> String {
     out
 }
 
-fn line_items<'a>(line: &'a str) -> Option<&'a str> {
+fn line_items(line: &str) -> Option<&str> {
     let trimmed = line.trim_start();
-    if trimmed.starts_with("- ") {
-        Some(trimmed[2..].trim().trim_matches('"'))
-    } else {
-        None
-    }
+    trimmed
+        .strip_prefix("- ")
+        .map(|item| item.trim().trim_matches('"'))
 }
 
 fn parse_scalar(raw: &str) -> String {
@@ -434,15 +432,28 @@ pub fn page_dir_of(repo: &Path, slug: &str) -> AppResult<PathBuf> {
 /// `content/pages/<slug>` and silently no-op.
 fn find_subpage_dir(repo: &Path, slug: &str) -> AppResult<Option<PathBuf>> {
     let root = resolve_in_repo(repo, "content/pages")?;
-    if let Ok(entries) = std::fs::read_dir(&root) {
+    fn search(dir: &Path, slug: &str) -> Option<PathBuf> {
+        let entries = std::fs::read_dir(dir).ok()?;
         for entry in entries.flatten() {
-            let sub = entry.path().join(SUBPAGES_DIR).join(slug);
-            if sub.is_dir() && (sub.join(PAGE_FILE).exists() || sub.join(POSTS_DIR).is_dir()) {
-                return Ok(Some(sub));
+            let page = entry.path();
+            if !page.is_dir() {
+                continue;
+            }
+            if entry.file_name().to_string_lossy() == slug
+                && (page.join(PAGE_FILE).exists() || page.join(POSTS_DIR).is_dir())
+            {
+                return Some(page);
+            }
+            let children = page.join(SUBPAGES_DIR);
+            if children.is_dir() {
+                if let Some(found) = search(&children, slug) {
+                    return Some(found);
+                }
             }
         }
+        None
     }
-    Ok(None)
+    Ok(search(&root, slug))
 }
 
 pub fn list_pages(repo: &Path) -> AppResult<Vec<PageRow>> {
@@ -466,10 +477,7 @@ fn collect_page(repo: &Path, dir: &Path, out: &mut Vec<PageRow>) -> AppResult<()
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
-        let raw = match std::fs::read_to_string(&page_file) {
-            Ok(r) => r,
-            Err(_) => String::new(),
-        };
+        let raw = std::fs::read_to_string(&page_file).unwrap_or_default();
         let (mut meta, _) = parse_page_raw(&raw);
         if meta.name.is_empty() {
             meta.name = slug.clone();
@@ -555,10 +563,8 @@ fn parse_page_raw(raw: &str) -> (PageMeta, ()) {
                 "order" => {
                     meta.order = value.parse().unwrap_or(100);
                 }
-                "parent" => {
-                    if value != "null" && !value.is_empty() {
-                        meta.parent = Some(value);
-                    }
+                "parent" if value != "null" && !value.is_empty() => {
+                    meta.parent = Some(value);
                 }
                 _ => {}
             }
@@ -595,17 +601,22 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
     let dir = match &page.parent {
         Some(p) if !p.is_empty() => {
             ensure_safe_slug(p)?;
-            resolve_in_repo(repo, &format!("content/pages/{}/subpages/{}", p, slug))?
+            let parent_dir = page_dir_of(repo, p)?;
+            if !parent_dir.join(PAGE_FILE).exists() {
+                return Err(AppError::Validation(format!("Parent page does not exist: {}", p)));
+            }
+            let root = repo.canonicalize().map_err(AppError::from)?;
+            let parent_rel = parent_dir
+                .strip_prefix(&root)
+                .or_else(|_| parent_dir.strip_prefix(repo))
+                .map_err(|_| AppError::Validation("Parent page escaped the repository.".into()))?;
+            let child_rel = parent_rel.join(SUBPAGES_DIR).join(&slug);
+            resolve_in_repo(repo, &child_rel.to_string_lossy())?
         }
         _ => page_dir_of(repo, &slug)?,
     };
     if dir.join(PAGE_FILE).exists() {
         return Err(AppError::Validation(format!("Page already exists: {}", slug)));
-    }
-    if let Some(parent) = &page.parent {
-        if !parent.is_empty() && !page_dir_of(repo, parent)?.join(PAGE_FILE).exists() {
-            return Err(AppError::Validation(format!("Parent page does not exist: {}", parent)));
-        }
     }
     std::fs::create_dir_all(&dir)?;
     let input = PageInput {
@@ -646,25 +657,9 @@ pub fn update_page(repo: &Path, page: &PageInput) -> AppResult<()> {
 pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
     let slug = ensure_safe_slug(slug)?;
     let dir = page_dir_of(repo, &slug)?;
+    let mut page_slugs = Vec::new();
     let mut entries: Vec<(String, String)> = Vec::new();
-    for post in post_slugs_in(&dir.join(POSTS_DIR)) {
-        entries.push((slug.clone(), post));
-    }
-    if dir.join(SUBPAGES_DIR).is_dir() {
-        if let Ok(subpages) = std::fs::read_dir(dir.join(SUBPAGES_DIR)) {
-            for sub in subpages.flatten() {
-                let sub_dir = sub.path();
-                if sub_dir.is_dir() {
-                    let Some(sub_slug) = sub_dir.file_name().map(|s| s.to_string_lossy().to_string()) else {
-                        continue;
-                    };
-                    for post in post_slugs_in(&sub_dir.join(POSTS_DIR)) {
-                        entries.push((sub_slug.clone(), post));
-                    }
-                }
-            }
-        }
-    }
+    collect_page_descendants(&dir, &mut page_slugs, &mut entries);
     let mut moved: Vec<(PathBuf, String)> = Vec::new();
     if dir.exists() {
         let original = repo_relative(repo, &dir)?;
@@ -680,9 +675,11 @@ pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
             }
         }
     }
-    if let Ok(path) = resolve_in_repo(repo, &format!("assets/pages/{}", slug)) {
-        if path.exists() {
-            moved.push((path, format!("assets/pages/{}", slug)));
+    for page in &page_slugs {
+        if let Ok(path) = resolve_in_repo(repo, &format!("assets/pages/{}", page)) {
+            if path.exists() {
+                moved.push((path, format!("assets/pages/{}", page)));
+            }
         }
     }
     if !moved.is_empty() {
@@ -693,9 +690,32 @@ pub fn delete_page(repo: &Path, slug: &str) -> AppResult<()> {
         remove_staged_post_assets(repo, page, post);
         let _ = remove_generated(repo, &format!("devlog/{}.html", post));
     }
-    remove_staged_page_assets(repo, &slug);
-    let _ = remove_generated(repo, &format!("pages/{}", slug));
+    for page in &page_slugs {
+        remove_staged_page_assets(repo, page);
+        let _ = remove_generated(repo, &format!("pages/{}", page));
+    }
     Ok(())
+}
+
+fn collect_page_descendants(
+    dir: &Path,
+    pages: &mut Vec<String>,
+    posts: &mut Vec<(String, String)>,
+) {
+    let Some(page_slug) = dir.file_name().map(|name| name.to_string_lossy().to_string()) else {
+        return;
+    };
+    pages.push(page_slug.clone());
+    for post in post_slugs_in(&dir.join(POSTS_DIR)) {
+        posts.push((page_slug.clone(), post));
+    }
+    let children = dir.join(SUBPAGES_DIR);
+    let Ok(entries) = std::fs::read_dir(children) else { return };
+    for child in entries.flatten() {
+        if child.path().is_dir() {
+            collect_page_descendants(&child.path(), pages, posts);
+        }
+    }
 }
 
 // ---------- Projects ----------
@@ -947,6 +967,20 @@ pub fn post_file_of(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<
         }
     }
     Ok(direct)
+}
+
+/// Resolve the canonical per-post asset directory for top-level and nested
+/// pages alike. The returned directory may not exist yet, but every existing
+/// ancestor has passed the repository/symlink boundary check.
+pub fn post_assets_dir_of(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<PathBuf> {
+    let post_file = post_file_of(repo, page_slug, post_slug)?;
+    let repo_root = repo.canonicalize().map_err(AppError::from)?;
+    let relative_post = post_file
+        .strip_prefix(&repo_root)
+        .or_else(|_| post_file.strip_prefix(repo))
+        .map_err(|_| AppError::Validation("Post path escaped the repository.".into()))?;
+    let relative_assets = relative_post.with_extension("").join("assets");
+    resolve_in_repo(repo, &relative_assets.to_string_lossy())
 }
 
 pub fn list_posts(repo: &Path) -> AppResult<Vec<PostRow>> {
@@ -1304,10 +1338,10 @@ pub fn scan_media(repo: &Path) -> AppResult<Vec<MediaFile>> {
     }
     let mut post_md: Vec<PathBuf> = vec![];
     walk_files(&root, &mut post_md);
-    // For each md file, look for a sibling assets/ dir.
+    // For each `<slug>.md`, look for its `<slug>/assets/` directory.
     for md in post_md {
         if md.extension().map(|e| e == "md").unwrap_or(false) {
-            let assets = md.parent().unwrap_or(&md).join("assets");
+            let assets = md.with_extension("").join("assets");
             if !assets.is_dir() {
                 continue;
             }
@@ -1316,7 +1350,7 @@ pub fn scan_media(repo: &Path) -> AppResult<Vec<MediaFile>> {
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            // Recover page slug from the path content/pages/<page>/posts/<post>/<post>.md
+            // Recover the owning page slug from the component before `posts`.
             let page = page_slug_from_post_path(repo, &md).unwrap_or_default();
             let mut asset_files = vec![];
             walk_files(&assets, &mut asset_files);
@@ -1351,11 +1385,10 @@ fn page_slug_from_post_path(repo: &Path, md: &Path) -> Option<String> {
     // path = repo/content/pages/<...>/<post>.md ; find the dir containing "posts".
     let rel = md.strip_prefix(repo).ok()?;
     let comps: Vec<&std::ffi::OsStr> = rel.components().map(|c| c.as_os_str()).collect();
-    // [content, pages, ... , posts, <post>, <post>.md]
+    // [content, pages, ..., <page>, posts, <post>.md]
     for (i, c) in comps.iter().enumerate() {
         if *c == "posts" && i >= 3 {
-            // page slug = comps[2], parent pages chain joined for nesting handled below
-            return Some(comps[2].to_string_lossy().to_string());
+            return Some(comps[i - 1].to_string_lossy().to_string());
         }
     }
     None
@@ -2098,6 +2131,63 @@ mod tests {
         // Deleting a subpage post must reach it (and not error).
         delete_post(&root, "gpu-port", "deep").unwrap();
         assert!(!sub_posts.join("deep.md").exists());
+
+        // Arbitrary-depth page lookup and asset resolution use the same
+        // recursive hierarchy rather than assuming one sub-page level.
+        create_page(
+            &root,
+            &PageInput {
+                name: "Kernel Notes".to_string(),
+                slug: "kernel-notes".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("gpu-port".to_string()),
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let deep_posts = resolve_in_repo(
+            &root,
+            "content/pages/fluid-dynamics/subpages/gpu-port/subpages/kernel-notes/posts",
+        )
+        .unwrap();
+        std::fs::create_dir_all(&deep_posts).unwrap();
+        std::fs::write(deep_posts.join("part-one.md"), "![](assets/plot.png)").unwrap();
+        let assets = post_assets_dir_of(&root, "kernel-notes", "part-one").unwrap();
+        std::fs::create_dir_all(&assets).unwrap();
+        std::fs::write(assets.join("plot.png"), b"png").unwrap();
+        assert_eq!(
+            std::fs::canonicalize(post_file_of(&root, "kernel-notes", "part-one").unwrap()).unwrap(),
+            std::fs::canonicalize(deep_posts.join("part-one.md")).unwrap()
+        );
+        let media = scan_media(&root).unwrap();
+        assert!(media.iter().any(|item| {
+            item.page == "kernel-notes"
+                && item.post == "part-one"
+                && item.file_name == "plot.png"
+                && !item.orphaned
+        }));
+        let staged_post = resolve_in_repo(
+            &root,
+            "assets/posts/kernel-notes/part-one/plot.png",
+        )
+        .unwrap();
+        std::fs::create_dir_all(staged_post.parent().unwrap()).unwrap();
+        std::fs::write(&staged_post, b"published").unwrap();
+        let staged_cover = resolve_in_repo(&root, "assets/pages/kernel-notes/cover.png").unwrap();
+        std::fs::create_dir_all(staged_cover.parent().unwrap()).unwrap();
+        std::fs::write(&staged_cover, b"cover").unwrap();
+        let generated = resolve_in_repo(&root, "pages/kernel-notes/index.html").unwrap();
+        std::fs::create_dir_all(generated.parent().unwrap()).unwrap();
+        std::fs::write(&generated, b"generated").unwrap();
+
+        delete_page(&root, "gpu-port").unwrap();
+        assert!(!deep_posts.exists());
+        assert!(!staged_post.exists());
+        assert!(!staged_cover.exists());
+        assert!(!generated.exists());
         std::fs::remove_dir_all(&root).ok();
     }
 

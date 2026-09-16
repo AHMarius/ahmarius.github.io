@@ -18,6 +18,16 @@ function renderKatex(latex, displayMode) {
       displayMode,
       throwOnError: false,
       output: 'html',
+      strict: false,
+      trust: false,
+      maxExpand: 1000,
+      macros: {
+        '\\RR': '\\mathbb{R}',
+        '\\NN': '\\mathbb{N}',
+        '\\ZZ': '\\mathbb{Z}',
+        '\\QQ': '\\mathbb{Q}',
+        '\\CC': '\\mathbb{C}',
+      },
     });
   } catch (error) {
     const escaped = escapeHtml(latex);
@@ -25,27 +35,49 @@ function renderKatex(latex, displayMode) {
   }
 }
 
-function renderInlineMathForBlock(text) {
-  return text.replace(/\$([^\$\n]+?)\$/g, (_, latex) => renderKatex(latex, false));
-}
-
 function blockMathHtml(latex) {
   return `<div class="math-block">${renderKatex(latex, true)}</div>`;
+}
+
+function firstMathIndex(src, delimiters) {
+  const indexes = delimiters.map((delimiter) => src.indexOf(delimiter)).filter((index) => index >= 0);
+  return indexes.length ? Math.min(...indexes) : undefined;
 }
 
 const blockMathToken = {
   name: 'blockMath',
   level: 'block',
   start(src) {
-    return src.indexOf('$$');
+    return firstMathIndex(src, ['$$', '\\[', '\\begin{']);
   },
   tokenizer(src) {
-    const match = /^\$\$([\s\S]+?)\$\$/.exec(src);
-    if (match) {
+    const dollar = /^ {0,3}\$\$[ \t]*(?:\n)?([\s\S]*?)\n? {0,3}\$\$(?:[ \t]*(?:\n|$))/.exec(src);
+    if (dollar) {
       return {
         type: 'blockMath',
-        raw: match[0],
-        latex: match[1].trim(),
+        raw: dollar[0],
+        latex: dollar[1].trim(),
+      };
+    }
+
+    const bracket = /^ {0,3}\\\[[ \t]*(?:\n)?([\s\S]*?)\n? {0,3}\\\](?:[ \t]*(?:\n|$))/.exec(src);
+    if (bracket) {
+      return {
+        type: 'blockMath',
+        raw: bracket[0],
+        latex: bracket[1].trim(),
+      };
+    }
+
+    // KaTeX supports the common AMS display environments directly. Accepting
+    // them without an extra $$ wrapper also makes pasted LaTeX documents work
+    // as expected in both preview and published output.
+    const environment = /^ {0,3}(\\begin\{(equation\*?|align\*?|alignat\*?|gather\*?|multline\*?|flalign\*?|split|cases|[pbBvV]?matrix|array|CD)\}[\s\S]*?\\end\{\2\})(?:[ \t]*(?:\n|$))/.exec(src);
+    if (environment) {
+      return {
+        type: 'blockMath',
+        raw: environment[0],
+        latex: environment[1].trim(),
       };
     }
     return undefined;
@@ -59,15 +91,33 @@ const inlineMathToken = {
   name: 'inlineMath',
   level: 'inline',
   start(src) {
-    return src.indexOf('$');
+    return firstMathIndex(src, ['$', '\\(']);
   },
   tokenizer(src) {
-    const match = /^\$([^\$\n]+?)\$/.exec(src);
-    if (match) {
+    const paren = /^\\\(((?:\\.|[^\\\n])*?)\\\)/.exec(src);
+    if (paren) {
       return {
         type: 'inlineMath',
-        raw: match[0],
-        latex: match[1],
+        raw: paren[0],
+        latex: paren[1],
+      };
+    }
+
+    // Do not treat $$ as inline math. A numeric character immediately after
+    // the closing delimiter is rejected to avoid turning "$5 and $10" into
+    // an accidental equation while still accepting deliberate `$5$` math.
+    const dollar = /^\$(?!\$)((?:\\.|[^\\$\n])+?)\$(?!\$|\d)/.exec(src);
+    if (dollar) {
+      // A second currency amount can otherwise pair with a later real math
+      // delimiter (for example "$5 and $10, but $x$"). Keep obvious prose
+      // prices literal without rejecting numeric equations such as `$10+x$`.
+      if (/^\d+(?:[.,]\d+)?(?:\s+[A-Za-z]{2,}|,\s*[A-Za-z])/.test(dollar[1])) {
+        return undefined;
+      }
+      return {
+        type: 'inlineMath',
+        raw: dollar[0],
+        latex: dollar[1],
       };
     }
     return undefined;
@@ -111,6 +161,9 @@ export function toText(markdown = '') {
   return String(markdown || '')
     .replace(/^---[\s\S]*?---\s*/m, '')
     .replace(/\$\$[\s\S]+?\$\$/g, ' ')
+    .replace(/\\\[[\s\S]+?\\\]/g, ' ')
+    .replace(/\\begin\{([A-Za-z*]+)\}[\s\S]+?\\end\{\1\}/g, ' ')
+    .replace(/\\\([^\n]+?\\\)/g, ' ')
     .replace(/\$[^$\n]+\$/g, ' ')
     .replace(/[#>*`~\[\]()\-_]/g, ' ')
     .replace(/\s+/g, ' ')

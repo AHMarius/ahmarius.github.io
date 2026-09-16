@@ -1,7 +1,0 @@
----
-name: "GPU Port"
-slug: "gpu-port"
-description: "Porting solvers to the GPU with CUDA."
-parent: "fluid-dynamics"
-order: 20
----

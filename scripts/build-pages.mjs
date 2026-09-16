@@ -171,6 +171,7 @@ function readPostPublic(filePath, pageSlug) {
       part: Number.parseInt(meta.part, 10) || 0,
       body,
       pageSlug,
+      sourcePath: filePath,
     };
   });
   return raw;

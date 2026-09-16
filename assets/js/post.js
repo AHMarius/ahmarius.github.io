@@ -30,6 +30,19 @@ document.addEventListener("DOMContentLoaded", () => {
       nav.innerHTML = `<span class="post-toc-title">On this page</span>\n<ul>${items}</ul>`;
       article.prepend(nav);
     }
+
+    // Every section can be linked directly without cluttering the heading at
+    // rest. This is especially handy when sharing a precise implementation
+    // detail from a long devlog entry.
+    headings.forEach((heading) => {
+      if (!heading.id || heading.querySelector(".heading-anchor")) return;
+      const anchor = document.createElement("a");
+      anchor.className = "heading-anchor";
+      anchor.href = `#${heading.id}`;
+      anchor.setAttribute("aria-label", `Link to ${heading.textContent.trim()}`);
+      anchor.textContent = "#";
+      heading.appendChild(anchor);
+    });
   }
 
   // Share buttons use the Web Share API when available, falling back to a
@@ -90,4 +103,31 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("scroll", update, { passive: true });
     update();
   }
+
+
+  const progress = document.querySelector(".reading-progress span");
+  const backToTop = document.createElement("button");
+  backToTop.className = "back-to-top";
+  backToTop.type = "button";
+  backToTop.setAttribute("aria-label", "Back to top");
+  backToTop.textContent = "↑";
+  backToTop.hidden = true;
+  document.body.appendChild(backToTop);
+
+  let ticking = false;
+  const updateReadingPosition = () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const ratio = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+    if (progress) progress.style.width = `${ratio * 100}%`;
+    backToTop.hidden = window.scrollY < Math.min(500, window.innerHeight * 0.7);
+    ticking = false;
+  };
+  window.addEventListener("scroll", () => {
+    if (!ticking) {
+      requestAnimationFrame(updateReadingPosition);
+      ticking = true;
+    }
+  }, { passive: true });
+  backToTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  updateReadingPosition();
 });

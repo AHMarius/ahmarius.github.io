@@ -45,7 +45,12 @@ const el = (tag: string, cls = "", text = "") => {
   return n;
 };
 const esc = (s: string) =>
-  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 const basename = (p: string) => String(p).split(/[\\/]/).pop() || String(p);
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -76,6 +81,7 @@ function editorActive(): boolean {
 /** Drop the editor bindings when leaving the post editor, so a later publish
  * / preview / Ctrl+S can't invoke a stale save closure against removed DOM. */
 function resetEditorState() {
+  resetSyncFileEditor();
   state.editor = null;
   state.editorSave = undefined;
   state.editorOriginalSlug = "";
@@ -362,6 +368,7 @@ const app = $("#app")!;
 app.innerHTML = `
   <div class="app-shell">
     <header class="topbar">
+      <button id="sidebar-toggle" class="btn ghost mobile-menu-button" type="button" aria-label="Open content navigator" aria-expanded="false">☰</button>
       <div class="brand">
         <img src="/icons/icon.png" class="brand-icon" alt="" />
         <span class="brand-name">AH Marius Content Studio</span>
@@ -392,12 +399,26 @@ app.innerHTML = `
           <button id="new-page-btn" class="btn block">+ New Page</button>
         </div>
       </aside>
+      <button class="sidebar-scrim" type="button" aria-label="Close content navigator"></button>
       <main class="content">
         <div id="view-content"></div>
       </main>
     </div>
+    <nav class="mobile-nav" aria-label="Primary navigation">
+      <button type="button" data-mobile-nav="dashboard"><span aria-hidden="true">⌂</span><span>Home</span></button>
+      <button type="button" data-mobile-nav="allposts"><span aria-hidden="true">☷</span><span>Posts</span></button>
+      <button type="button" data-mobile-nav="newpost" class="mobile-nav-new"><span aria-hidden="true">＋</span><span>New</span></button>
+      <button type="button" data-mobile-nav="sync"><span aria-hidden="true">⇄</span><span>Sync</span></button>
+      <button type="button" data-mobile-nav="settings"><span aria-hidden="true">⚙</span><span>Settings</span></button>
+    </nav>
   </div>
 `;
+
+function closeMobileSidebar() {
+  document.querySelector(".sidebar")?.classList.remove("is-open");
+  document.querySelector(".sidebar-scrim")?.classList.remove("is-open");
+  $("#sidebar-toggle")?.setAttribute("aria-expanded", "false");
+}
 
 function renderSidebar() {
   const treeEl = $("#sidebar-tree")!;
@@ -426,6 +447,7 @@ function renderSidebar() {
       if (!confirmLeaveEditor()) return;
       const slug = (r as HTMLElement).dataset.id;
       showPageView(slug!);
+      closeMobileSidebar();
     });
   });
   treeEl.querySelectorAll(".tree-post").forEach((r: any) => {
@@ -433,6 +455,7 @@ function renderSidebar() {
       if (!confirmLeaveEditor()) return;
       const [page, slug] = (r as HTMLElement).dataset.id!.split(":");
       showPostView(page, slug);
+      closeMobileSidebar();
     });
   });
   treeEl.querySelectorAll(".tree-caret").forEach((c: any) => {
@@ -497,8 +520,16 @@ function syncGatewayUrl(): string {
   return String(state.prefs?.settings?.sync_gateway_url || "").trim();
 }
 
+let syncFileEditor: Editor | null = null;
+
+function resetSyncFileEditor() {
+  syncFileEditor?.destroy();
+  syncFileEditor = null;
+}
+
 function showSyncView() {
   resetEditorState();
+  resetSyncFileEditor();
   state.view = { kind: "sync" };
   const v = viewContent();
   const gateway = syncGatewayUrl();
@@ -558,14 +589,29 @@ async function openSyncFile(path: string) {
   host.innerHTML = `<p class="muted">Loading ${esc(path)}…</p>`;
   try {
     const doc = await readSyncFile(syncGatewayUrl(), state.syncSession.token, path);
-    host.innerHTML = `<label class="sync-file-title">${esc(path)}<textarea id="sync-body" rows="24" spellcheck="true"></textarea></label><div class="card-actions"><button id="sync-save" class="btn primary">Save to GitHub</button></div><p id="sync-save-msg" class="muted"></p>`;
-    const body = $("#sync-body", host) as HTMLTextAreaElement;
-    body.value = doc.content;
+    resetSyncFileEditor();
+    const localKey = `sync-draft:${syncGatewayUrl()}:${path}`;
+    const recovered = localStorage.getItem(localKey);
+    host.innerHTML = `<div class="sync-document-head"><div><strong>${esc(path)}</strong><p class="muted small">Full Markdown and LaTeX preview · local recovery stays on this device</p></div><button id="sync-save" class="btn primary">Save to GitHub</button></div><p id="sync-save-msg" class="muted"></p>`;
+    syncFileEditor = new Editor(() => {
+      if (syncFileEditor) localStorage.setItem(localKey, syncFileEditor.getValue());
+      const message = $("#sync-save-msg", host) as HTMLElement | null;
+      if (message) {
+        message.textContent = "Unsaved changes stored on this device.";
+        message.className = "muted";
+      }
+    });
+    host.appendChild(syncFileEditor.getElement());
+    const restore = Boolean(recovered && recovered !== doc.content && window.confirm("Restore the unsaved local version of this file?"));
+    syncFileEditor.setBody(restore && recovered ? recovered : doc.content);
+    syncFileEditor.setMode(window.innerWidth <= 820 ? "source" : "split");
+    if (recovered && !restore) localStorage.removeItem(localKey);
     $("#sync-save", host)!.addEventListener("click", async () => {
       const message = $("#sync-save-msg", host) as HTMLElement;
       try {
-        const saved = await writeSyncFile(syncGatewayUrl(), state.syncSession!.token, path, doc.sha, body.value);
+        const saved = await writeSyncFile(syncGatewayUrl(), state.syncSession!.token, path, doc.sha, syncFileEditor!.getValue());
         doc.sha = saved.sha;
+        localStorage.removeItem(localKey);
         message.textContent = "Saved to GitHub source. Run Publish on the desktop to rebuild and deploy the site.";
         message.className = "success-text";
       } catch (error) {
@@ -847,9 +893,13 @@ function showProjectsView() {
       ),
     );
     grid.querySelectorAll("[data-del-project]").forEach((b) =>
-      b.addEventListener("click", () => {
+      b.addEventListener("click", async () => {
         const slug = (b as HTMLElement).dataset["del-project"]!;
-        if (confirm(`Delete project "${slug}"? Posts keep their project label.`)) {
+        if (await confirmDialog(
+          `Delete project "${slug}"?`,
+          "This moves the project and its assets to Recently deleted. Existing posts keep their project label, and the project can be restored until you empty the trash.",
+          "Move to trash",
+        )) {
           cell(async () => {
             await call("delete_project", { slug });
             showProjectsView();
@@ -939,8 +989,12 @@ function showProjectView(slug: string) {
     actions.append(editBtn, delBtn);
     v.appendChild(actions);
     editBtn.addEventListener("click", () => openProjectEditor(slug));
-    delBtn.addEventListener("click", () => {
-      if (confirm(`Delete project "${slug}"?`)) {
+    delBtn.addEventListener("click", async () => {
+      if (await confirmDialog(
+        `Delete project "${slug}"?`,
+        "This moves the project and its assets to Recently deleted. Existing posts keep their project label, and the project can be restored until you empty the trash.",
+        "Move to trash",
+      )) {
         cell(async () => {
           await call("delete_project", { slug });
           showProjectsView();
@@ -1297,7 +1351,8 @@ function confirmDialog(title: string, message: string, confirmLabel = "Delete"):
 async function deletePage(slug: string) {
   const yes = await confirmDialog(
     `Delete page "${slug}"?`,
-    "This removes the page folder and all its posts from your content. This cannot be undone locally.",
+    "This moves the page, all of its posts, and their assets to Recently deleted. You can restore them until you empty the trash.",
+    "Move to trash",
   );
   if (!yes) return;
   try {
@@ -1314,7 +1369,8 @@ async function deletePage(slug: string) {
 async function deletePost(page: string, slug: string) {
   const yes = await confirmDialog(
     `Delete post "${slug}"?`,
-    `This deletes the post from the "${page}" page. This cannot be undone locally.`,
+    `This moves the post and its assets from the "${page}" page to Recently deleted. You can restore it until you empty the trash.`,
+    "Move to trash",
   );
   if (!yes) return;
   try {
@@ -1487,6 +1543,11 @@ const openEditor = (page: string) => {
     {
       pickImage: () => pickAndInsertImage(page),
       importPasted: (name, data) => importPastedImage(page, name, data),
+      resolveAsset: (relPath) => call("read_post_asset", {
+        pageSlug: page,
+        postSlug: state.editorAssetSlug || targetSlugFor(),
+        assetPath: relPath,
+      }),
     },
   );
   state.editor = e;
@@ -2056,6 +2117,51 @@ function handleExternalFile(path: string) {
 }
 
 // ---------- Publish ----------
+async function confirmBuiltPublish(
+  body: HTMLElement,
+  overlay: HTMLElement,
+  paths: string[],
+  status: any,
+): Promise<boolean> {
+  const trackedDiff = await cell(() => call("git_diff", { staged: false }));
+  const states = new Map<string, string>();
+  (status.unstaged || []).forEach((file: any) => states.set(String(file.path), String(file.status || "modified")));
+  (status.untracked || []).forEach((path: any) => states.set(String(path), "new"));
+  const summary = paths.length
+    ? paths
+        .slice()
+        .sort()
+        .map((path) => `${states.get(path) || "changed"}\t${path}`)
+        .join("\n")
+    : "No source changes; the validated snapshot will be redeployed.";
+
+  body.innerHTML = `
+    <p class="success-text">Validation and production build passed.</p>
+    <p>Review the exact source/output paths that will be committed before deployment:</p>
+    <pre class="diffbox">${esc(summary)}</pre>
+    ${trackedDiff ? `<details class="diff-details" open><summary>Post-build diff</summary><pre class="diffbox diff-big">${esc(trackedDiff)}</pre></details>` : ""}
+    <p class="muted">Only these allowlisted paths will be staged. The public snapshot is deployed only after the source commit reaches main.</p>
+  `;
+
+  const publishButton = $("#pub-go", overlay) as HTMLButtonElement;
+  const cancelButton = $("#pub-cancel", overlay) as HTMLButtonElement;
+  publishButton.textContent = paths.length ? "Commit & deploy" : "Deploy validated snapshot";
+  publishButton.disabled = false;
+
+  return new Promise((resolve) => {
+    publishButton.onclick = () => {
+      publishButton.disabled = true;
+      cancelButton.disabled = true;
+      cancelButton.style.display = "none";
+      resolve(true);
+    };
+    cancelButton.onclick = () => {
+      overlay.remove();
+      resolve(false);
+    };
+  });
+}
+
 function openPublish() {
   const overlay = el("div", "overlay");
   overlay.innerHTML = `
@@ -2242,7 +2348,7 @@ function openPublish() {
           return;
         }
         const paths = new Set<string>();
-        const stagePat = /^(content\/|devlog\/|devlog\.html|assets\/(?:posts|pages|projects|og)\/|pages\.html|pages\/|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json|\.github\/workflows\/publish\.yml)/;
+        const stagePat = /^(content\/|devlog\/|devlog\.html|assets\/(?:posts|pages|projects|og)\/|assets\/css\/katex\.min\.css$|pages\.html|pages\/|projects\.html$|admin-app\/public\/projects\.json$|feed\.xml|atom\.xml|sitemap\.xml|robots\.txt|search-index\.json|\.github\/workflows\/publish\.yml)/;
         (status2.unstaged || []).forEach((f: any) => {
           if (stagePat.test(f.path)) paths.add(f.path);
         });
@@ -2250,8 +2356,9 @@ function openPublish() {
           if (stagePat.test(p)) paths.add(p);
         });
         const deleted = (status2.unstaged || []).filter((f: any) => f.status === "deleted" && stagePat.test(f.path));
-        body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)${deleted.length ? `, including ${deleted.length} deletion${deleted.length === 1 ? "" : "s"}` : ""}…</p>`;
         const stagedPaths = Array.from(paths);
+        if (!(await confirmBuiltPublish(body, overlay, stagedPaths, status2))) return;
+        body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)${deleted.length ? `, including ${deleted.length} deletion${deleted.length === 1 ? "" : "s"}` : ""}…</p>`;
         let commitHash = await call("git_last_commit");
         if (stagedPaths.length > 0) {
           await call("git_stage_paths", { paths: stagedPaths });
@@ -2269,6 +2376,18 @@ function openPublish() {
           }
         } else {
           body.innerHTML = `<p class="muted">No new content changes; redeploying the current validated snapshot…</p>`;
+        }
+        body.innerHTML = `<p class="muted">Verifying the snapshot matches committed source…</p>`;
+        try {
+          await call("validate_deploy_snapshot");
+        } catch (e) {
+          body.innerHTML = `<p class="error-text">Snapshot validation failed; nothing was pushed or deployed.</p>
+            <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
+            ${stagedPaths.length ? `<p class="muted">The validated content commit is local (<code>${esc(commitHash || "?")}</code>). Fix and commit the reported files, then publish again.</p>` : ""}
+            <div class="modal-actions"><button id="pub-close-snapshot" class="btn">Close</button></div>`;
+          $("#pub-close-snapshot", overlay)!.onclick = () => overlay.remove();
+          $("#pub-go", overlay)!.remove();
+          return;
         }
         body.innerHTML = `<p class="muted">Pushing…</p>`;
         let push = "";
@@ -2316,12 +2435,20 @@ function openPublish() {
           ${hookLine}
         `;
         $("#pub-go", overlay)!.remove();
+        const doneButton = $("#pub-cancel", overlay) as HTMLButtonElement;
+        doneButton.disabled = false;
+        doneButton.style.display = "";
+        doneButton.textContent = "Close";
         setStatus("Published");
         await refreshTree();
       } catch (e) {
         const msg = String((e as any).message ?? e ?? "");
         body.innerHTML = `<p class="error-text">Something went wrong.</p><pre class="diffbox">${esc(msg.trim() ? msg : "An unknown error occurred during publishing.")}</pre>`;
         $("#pub-go", overlay)!.remove();
+        const closeButton = $("#pub-cancel", overlay) as HTMLButtonElement;
+        closeButton.disabled = false;
+        closeButton.style.display = "";
+        closeButton.textContent = "Close";
       }
     };
   });
@@ -2649,19 +2776,34 @@ async function renderAuthStatus() {
 
 // ---------- Wiring ----------
 function wireTop() {
+  const navigate = (nav?: string) => {
+    if (!confirmLeaveEditor()) return;
+    closeMobileSidebar();
+    if (nav === "dashboard") showDashboard();
+    else if (nav === "sync") showSyncView();
+    else if (nav === "pages") showPagesView();
+    else if (nav === "projects") showProjectsView();
+    else if (nav === "allposts") showAllPostsView();
+    else if (nav === "newpost") openPostEditor(promptPageForPost(), null);
+    else if (nav === "newpostpdf") void cell(newPostFromPdf);
+    else if (nav === "settings") showSettings();
+  };
   $$(".topnav2 button").forEach((b) => {
     b.addEventListener("click", () => {
-      if (!confirmLeaveEditor()) return;
-      const nav = (b as HTMLElement).dataset.nav;
-      if (nav === "dashboard") showDashboard();
-      else if (nav === "sync") showSyncView();
-      else if (nav === "pages") showPagesView();
-      else if (nav === "projects") showProjectsView();
-      else if (nav === "allposts") showAllPostsView();
-      else if (nav === "newpost") openPostEditor(promptPageForPost(), null);
-      else if (nav === "newpostpdf") void cell(newPostFromPdf);
+      navigate((b as HTMLElement).dataset.nav);
     });
   });
+  $$('[data-mobile-nav]').forEach((button) => {
+    button.addEventListener("click", () => navigate((button as HTMLElement).dataset.mobileNav));
+  });
+  $("#sidebar-toggle")!.onclick = () => {
+    const sidebar = document.querySelector(".sidebar")!;
+    const open = !sidebar.classList.contains("is-open");
+    sidebar.classList.toggle("is-open", open);
+    document.querySelector(".sidebar-scrim")?.classList.toggle("is-open", open);
+    $("#sidebar-toggle")!.setAttribute("aria-expanded", String(open));
+  };
+  document.querySelector(".sidebar-scrim")?.addEventListener("click", closeMobileSidebar);
   $("#new-page-btn")!.onclick = () => { if (confirmLeaveEditor()) openPageEditor(); };
   $("#publish-btn")!.onclick = openPublish;
   $("#settings-btn")!.onclick = () => { if (confirmLeaveEditor()) showSettings(); };
