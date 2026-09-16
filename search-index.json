@@ -1,5 +1,6 @@
 [
   {
+    "kind": "post",
     "slug": "434r34",
     "title": "434r34",
     "excerpt": "rrr",
@@ -12,6 +13,7 @@
     "url": "/devlog/434r34.html"
   },
   {
+    "kind": "post",
     "slug": "first-solver",
     "title": "First Solver",
     "excerpt": "First Solver This is a test post with inline math and a block:",
@@ -26,5 +28,86 @@
     "date": "2026-09-01",
     "updatedDate": "2026-09-01",
     "url": "/devlog/first-solver.html"
+  },
+  {
+    "kind": "page",
+    "slug": "fluid-dynamics",
+    "title": "FluidDynamics",
+    "excerpt": "Experiments in fluid simulation and solver development.",
+    "tags": [],
+    "technologies": [],
+    "project": "",
+    "page": "FluidDynamics",
+    "date": "",
+    "updatedDate": "",
+    "url": "/pages/fluid-dynamics/index.html"
+  },
+  {
+    "kind": "page",
+    "slug": "gpu-port",
+    "title": "GPU Port",
+    "excerpt": "Porting solvers to the GPU with CUDA.",
+    "tags": [],
+    "technologies": [],
+    "project": "",
+    "page": "GPU Port",
+    "date": "",
+    "updatedDate": "",
+    "url": "/pages/gpu-port/index.html"
+  },
+  {
+    "kind": "page",
+    "slug": "test",
+    "title": "test",
+    "excerpt": "Project page and related posts.",
+    "tags": [],
+    "technologies": [],
+    "project": "",
+    "page": "test",
+    "date": "",
+    "updatedDate": "",
+    "url": "/pages/test/index.html"
+  },
+  {
+    "kind": "site",
+    "slug": "home",
+    "title": "Home",
+    "excerpt": "Portfolio overview and featured work.",
+    "url": "/index.html"
+  },
+  {
+    "kind": "site",
+    "slug": "projects",
+    "title": "Projects",
+    "excerpt": "Software, games, simulations, and experiments.",
+    "url": "/projects.html"
+  },
+  {
+    "kind": "site",
+    "slug": "games",
+    "title": "Games",
+    "excerpt": "Playable games and game-development projects.",
+    "url": "/games.html"
+  },
+  {
+    "kind": "site",
+    "slug": "pages",
+    "title": "Pages",
+    "excerpt": "Long-form project hubs and documentation.",
+    "url": "/pages.html"
+  },
+  {
+    "kind": "site",
+    "slug": "about",
+    "title": "About",
+    "excerpt": "About Alexandru-Marius Hrițcu and contact information.",
+    "url": "/about.html"
+  },
+  {
+    "kind": "site",
+    "slug": "devlog",
+    "title": "Devlog",
+    "excerpt": "Technical writing, project notes, and progress updates.",
+    "url": "/devlog.html"
   }
 ]

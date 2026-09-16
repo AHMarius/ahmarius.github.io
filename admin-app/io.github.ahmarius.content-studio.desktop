@@ -1,0 +1,17 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Type=Application
+Version=1.0
+
+Name=AH Marius Content Studio
+GenericName=Content Editor
+Comment=Write and publish portfolio content for ahmarius.github.io
+
+Exec=/usr/local/bin/ahmarius-content-studio
+Icon=ahmarius-content-studio
+
+Terminal=false
+StartupNotify=true
+
+Categories=Utility;Development;
+Keywords=markdown;blog;portfolio;github;publishing;writing;latex;

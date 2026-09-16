@@ -23,8 +23,9 @@ export function validatePostMeta(meta) {
   if (meta.date && !/^\d{4}-\d{2}-\d{2}$/.test(meta.date)) {
     issues.push(`date '${meta.date}' is not in YYYY-MM-DD format.`);
   }
-  if (meta.publishedAt && !/^\d{4}-\d{2}-\d{2}$/.test(meta.publishedAt)) {
-    issues.push(`publishAt '${meta.publishedAt}' is not in YYYY-MM-DD format.`);
+  const publishAt = meta.publishAt || meta.publish_at || meta.publishedAt;
+  if (publishAt && !/^\d{4}-\d{2}-\d{2}$/.test(publishAt)) {
+    issues.push(`publishAt '${publishAt}' is not in YYYY-MM-DD format.`);
   }
   return issues;
 }

@@ -21,7 +21,9 @@ export async function readPost(filePath) {
     date: meta.date || '',
     updatedDate: meta.updatedDate || meta.date || '',
     status: meta.status || 'draft',
+    publishAt: meta.publishAt || meta.publish_at || '',
     featured: meta.featured === true || meta.featured === 'true',
+    comments: meta.comments !== false,
     excerpt: meta.excerpt || truncateText(body, 180),
     tags: Array.isArray(meta.tags) ? meta.tags : [],
     technologies: Array.isArray(meta.technologies) ? meta.technologies : [],
@@ -49,11 +51,15 @@ export async function writePost(filePath, post) {
   };
   if (post.updatedDate) meta.updatedDate = String(post.updatedDate);
   if (post.status) meta.status = String(post.status);
+  if (post.publishAt) meta.publishAt = String(post.publishAt);
   if (post.featured === true) meta.featured = true;
+  if (post.comments === false) meta.comments = false;
   if (post.page) meta.page = String(post.page);
   if (post.project) meta.project = String(post.project);
   if (post.subtitle) meta.subtitle = String(post.subtitle);
   if (post.cover) meta.cover = String(post.cover);
+  if (post.series) meta.series = String(post.series);
+  if (Number(post.part) > 0) meta.part = Number(post.part);
   if (post.excerpt) meta.excerpt = truncateText(String(post.excerpt), 300);
   if (tags.length) meta.tags = tags;
   if (technologies.length) meta.technologies = technologies;

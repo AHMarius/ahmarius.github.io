@@ -128,6 +128,7 @@ export async function buildPageHierarchy(root = PAGES_ROOT, strict = false) {
           date: meta.date || '',
           updatedDate: meta.updatedDate || meta.date || '',
           status: meta.status || 'draft',
+          publishAt: meta.publishAt || meta.publish_at || '',
           featured: meta.featured === true || meta.featured === 'true',
           tags: Array.isArray(meta.tags) ? meta.tags : [],
           technologies: Array.isArray(meta.technologies) ? meta.technologies : [],

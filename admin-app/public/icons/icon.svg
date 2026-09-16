@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AH Marius Content Studio">
+  <rect width="512" height="512" rx="104" fill="#172033"/>
+  <path d="M120 120h272v272H120z" rx="22" fill="#263956"/>
+  <path d="M166 350V162h42l48 94 48-94h42v188h-38V234l-40 78h-24l-40-78v116z" fill="#f6f8fc"/>
+  <path d="M366 118h34v86h-34z" fill="#6dd6c9"/>
+</svg>

@@ -44,6 +44,8 @@ export function pageShell(opts = {}) {
     <meta name="description" content="${escapeAttribute(description)}" />
     ${canonical ? `<link rel="canonical" href="${escapeAttribute(canonical)}" />` : ''}
     <link rel="icon" type="image/svg+xml" href="${depthPrefix(depth, 'assets/site/favicon.svg')}" />
+    <link rel="alternate" type="application/rss+xml" title="Devlog RSS" href="${depthPrefix(depth, 'feed.xml')}" />
+    <link rel="alternate" type="application/atom+xml" title="Devlog Atom" href="${depthPrefix(depth, 'atom.xml')}" />
     <meta name="theme-color" content="#000000" />
     ${css}
     ${js}

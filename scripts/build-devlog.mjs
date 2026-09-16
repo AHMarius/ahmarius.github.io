@@ -6,6 +6,7 @@ import { renderMarkdown, truncateText, buildReadTime, headingsFromMarkdown, rewr
 import { postAssetsBase, copyAllPostAssets, removePostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute, depthPrefix } from './content/templates.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
+import { effectivePostStatus } from './content/metadata.mjs';
 import { validatePostMeta, assertValidMeta } from './content/schema.mjs';
 import {
   generateFeed,
@@ -39,14 +40,6 @@ export function parseMode(args = process.argv) {
 }
 
 const runMode = parseMode();
-
-/** Combine status + publish_at: future-dated posts stay hidden until then. */
-function publishStatus(status, publishAt) {
-  if (status !== 'published' || !publishAt) return status;
-  const at = new Date(publishAt.endsWith('Z') ? publishAt : `${publishAt}T00:00:00Z`);
-  if (Number.isNaN(at.getTime())) return status;
-  return at.getTime() <= Date.now() ? status : 'draft';
-}
 
 /** Site-wide settings (giscus/umami) written by the editor before a build. */
 async function loadStudioConfig() {
@@ -86,7 +79,7 @@ async function loadAllPosts(onlyPublished = false) {
       const slug = meta.slug || entry.name.replace(/\.md$/, '');
       const publishAt = meta.publishAt || meta.publish_at || '';
       // Scheduled posts: treat a future publish_at like a draft until its date.
-      const status = publishStatus(meta.status || 'draft', publishAt);
+      const status = effectivePostStatus(meta.status || 'draft', publishAt);
       if (onlyPublished && status !== 'published') continue;
       const post = {
         file: entry.name,
@@ -130,7 +123,7 @@ async function loadAllPosts(onlyPublished = false) {
     assertValidMeta(entry.name, validatePostMeta(meta), onlyPublished);
     const slug = meta.slug || entry.name.replace(/\.md$/, '');
     const publishAt = meta.publishAt || meta.publish_at || '';
-    const status = publishStatus(meta.status || 'published', publishAt);
+    const status = effectivePostStatus(meta.status || 'published', publishAt);
     if (onlyPublished && status !== 'published') continue;
     const post = {
       file: entry.name,
@@ -364,6 +357,10 @@ export function postPage(post, seriesNav = '', related = []) {
           <a class="devlog-link" href="${backHref}">← All posts</a>
           <div class="devlog-meta">${escapeHtml(post.date)} • ${escapeHtml(post.readTime)}</div>
           <h1>${escapeHtml(post.title)}</h1>
+          <div class="post-actions" aria-label="Article actions">
+            <button type="button" class="devlog-share" data-url="/devlog/${escapeAttribute(post.slug)}.html">Share</button>
+            <button type="button" class="post-print">Print / save PDF</button>
+          </div>
           ${toc ? `${toc}` : ''}
           <div class="devlog-tags">${tagLinks}</div>
           <div class="devlog-tech" style="margin-top:0.75rem;">${techLinks}</div>
@@ -468,7 +465,8 @@ export async function buildDevlog(opts = {}) {
   await fs.writeFile(path.join(ROOT, 'atom.xml'), generateAtom(published), 'utf8');
   await fs.writeFile(path.join(ROOT, 'sitemap.xml'), generateSitemap(published, { staticPages: ['index.html', 'projects.html', 'games.html', 'devlog.html', 'pages.html', 'about.html'], archives }), 'utf8');
   await fs.writeFile(path.join(ROOT, 'robots.txt'), generateRobotsTxt(), 'utf8');
-  await fs.writeFile(path.join(ROOT, 'search-index.json'), generateSearchIndex(published), 'utf8');
+  const searchPages = (await buildPageHierarchy(PAGES_ROOT, onlyPublished)).pages;
+  await fs.writeFile(path.join(ROOT, 'search-index.json'), generateSearchIndex(published, { pages: searchPages }), 'utf8');
 
   // Open Graph images (SVG, no binary deps) for posts without a custom cover.
   const ogDir = path.join(ROOT, 'assets', 'og');
@@ -531,6 +529,8 @@ async function copyDistTree(log = console) {
   await fs.rm(DIST_DIR, { recursive: true, force: true });
   await fs.mkdir(DIST_DIR, { recursive: true });
   await copyDir(ROOT, DIST_DIR);
+  // Prevent GitHub Pages from rebuilding this already-generated snapshot.
+  await fs.writeFile(path.join(DIST_DIR, '.nojekyll'), '', 'utf8');
   log.log('Built dist/ tree.');
 }
 

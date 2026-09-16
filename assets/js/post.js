@@ -4,7 +4,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const article = document.querySelector(".devlog-article, .page-body");
   if (article) {
     const headings = [...article.querySelectorAll("h2, h3")];
-    if (headings.length >= 3) {
+    headings.forEach((heading, index) => {
+      if (heading.id) return;
+      const base = (heading.textContent || "section")
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || `section-${index + 1}`;
+      let id = base;
+      let suffix = 2;
+      while (document.getElementById(id)) id = `${base}-${suffix++}`;
+      heading.id = id;
+    });
+    if (headings.length >= 3 && !article.querySelector(".post-toc")) {
       const items = headings
         .map((heading) => {
           const level = heading.tagName === "H3" ? 3 : 2;
@@ -47,6 +60,10 @@ document.addEventListener("DOMContentLoaded", () => {
         window.prompt("Copy this link:", href);
       }
     });
+  });
+
+  document.querySelectorAll(".post-print").forEach((button) => {
+    button.addEventListener("click", () => window.print());
   });
 
   // Scroll-spy for the on-page table of contents, highlighting the section

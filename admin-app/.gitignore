@@ -1,0 +1,7 @@
+node_modules/
+dist/
+target/
+# Icon sources under public/icons/ are committed (PNGs derived from icon.svg)
+
+# Auto-build version marker written by start.sh
+src-tauri/.build-version

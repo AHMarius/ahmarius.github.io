@@ -860,6 +860,11 @@ fn git_push(app: tauri::AppHandle, branch: String) -> Result<String, AppError> {
 }
 
 #[tauri::command]
+fn deploy_pages(app: tauri::AppHandle) -> Result<String, AppError> {
+    with_repo(&app, None, |repo| git::deploy_pages(repo))
+}
+
+#[tauri::command]
 fn git_pull(app: tauri::AppHandle, strategy: Option<String>) -> Result<String, AppError> {
     with_repo(&app, None, |repo| git::git_pull(repo, &strategy.unwrap_or_else(|| "rebase".to_string())))
 }
@@ -1028,6 +1033,7 @@ pub fn run() {
             git_commit,
             git_unstage,
             git_push,
+            deploy_pages,
             git_pull,
             git_last_commit,
             git_auth_status,

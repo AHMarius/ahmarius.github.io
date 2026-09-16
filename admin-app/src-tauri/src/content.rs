@@ -47,8 +47,9 @@ pub struct ProjectRow {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct PostMeta {    #[serde(default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PostMeta {
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub slug: String,
@@ -59,9 +60,13 @@ pub struct PostMeta {    #[serde(default)]
     #[serde(default)]
     pub status: String,
     #[serde(default)]
+    pub publish_at: String,
+    #[serde(default)]
     pub excerpt: String,
     #[serde(default)]
     pub featured: bool,
+    #[serde(default = "default_comments")]
+    pub comments: bool,
     #[serde(default)]
     pub page: String,
     #[serde(default)]
@@ -78,6 +83,30 @@ pub struct PostMeta {    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub technologies: Vec<String>,
+}
+
+impl Default for PostMeta {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            slug: String::new(),
+            date: String::new(),
+            updated_date: String::new(),
+            status: String::new(),
+            publish_at: String::new(),
+            excerpt: String::new(),
+            featured: false,
+            comments: true,
+            page: String::new(),
+            project: String::new(),
+            subtitle: String::new(),
+            cover: String::new(),
+            series: String::new(),
+            part: 0,
+            tags: Vec::new(),
+            technologies: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -122,8 +151,10 @@ pub struct PostRow {
     pub date: String,
     pub updated_date: String,
     pub status: String,
+    pub publish_at: String,
     pub excerpt: String,
     pub featured: bool,
+    pub comments: bool,
     pub page: String,
     pub project: String,
     pub tags: Vec<String>,
@@ -181,6 +212,10 @@ fn yaml_list(items: &[String]) -> String {
         .join("\n")
 }
 
+fn default_comments() -> bool {
+    true
+}
+
 pub fn serialize_post(meta: &PostMeta, body: &str) -> String {
     let mut lines = vec!["---".to_string()];
     lines.push(yaml_string("title", &meta.title));
@@ -194,8 +229,14 @@ pub fn serialize_post(meta: &PostMeta, body: &str) -> String {
     if !meta.status.is_empty() {
         lines.push(yaml_string("status", &meta.status));
     }
+    if !meta.publish_at.is_empty() {
+        lines.push(yaml_string("publishAt", &meta.publish_at));
+    }
     if meta.featured {
         lines.push("featured: true".to_string());
+    }
+    if !meta.comments {
+        lines.push("comments: false".to_string());
     }
     if !meta.page.is_empty() {
         lines.push(yaml_string("page", &meta.page));
@@ -290,8 +331,10 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
         date: String::new(),
         updated_date: String::new(),
         status: String::new(),
+        publish_at: String::new(),
         excerpt: String::new(),
         featured: false,
+        comments: true,
         page: String::new(),
         project: String::new(),
         subtitle: String::new(),
@@ -339,8 +382,10 @@ pub fn parse_post(raw: &str) -> (PostMeta, String) {
                     "date" => meta.date = value,
                     "updatedDate" => meta.updated_date = value,
                     "status" => meta.status = value,
+                    "publishAt" | "publish_at" => meta.publish_at = value,
                     "excerpt" => meta.excerpt = value,
                     "featured" => meta.featured = value == "true",
+                    "comments" => meta.comments = value != "false",
                     "page" => meta.page = value,
                     "project" => meta.project = value,
                     "subtitle" => meta.subtitle = value,
@@ -944,8 +989,10 @@ fn read_post_from_path(_repo: &Path, page_slug: &str, path: &Path) -> AppResult<
         } else {
             meta.status
         },
+        publish_at: meta.publish_at,
         excerpt: meta.excerpt,
         featured: meta.featured,
+        comments: meta.comments,
         page: page_slug.to_string(),
         project: meta.project,
         tags: meta.tags,
@@ -967,8 +1014,10 @@ pub fn read_post(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<ser
         "date": meta.date,
         "updatedDate": meta.updated_date,
         "status": if meta.status.is_empty() { "draft" } else { meta.status.as_str() },
+        "publishAt": meta.publish_at,
         "excerpt": meta.excerpt,
         "featured": meta.featured,
+        "comments": meta.comments,
         "page": page_slug,
         "project": meta.project,
         "subtitle": meta.subtitle,
@@ -1026,14 +1075,19 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
     if !is_iso_date(&date) {
         return Err(AppError::Validation("Post date must use YYYY-MM-DD.".into()));
     }
+    if !input.meta.publish_at.is_empty() && !is_iso_date(&input.meta.publish_at) {
+        return Err(AppError::Validation("Scheduled publish date must use YYYY-MM-DD.".into()));
+    }
     let meta = PostMeta {
         title: input.meta.title.clone(),
         slug: post_slug.clone(),
         date,
         updated_date: today,
         status: status.to_string(),
+        publish_at: input.meta.publish_at.clone(),
         excerpt: input.meta.excerpt.clone(),
         featured: input.meta.featured,
+        comments: input.meta.comments,
         page: page_slug.clone(),
         project: input.meta.project.clone(),
         subtitle: input.meta.subtitle.clone(),
@@ -1699,8 +1753,10 @@ mod tests {
             date: "2026-01-05".to_string(),
             updated_date: String::new(),
             status: "published".to_string(),
+            publish_at: String::new(),
             excerpt: String::new(),
             featured: false,
+            comments: true,
             page: "fluid-dynamics".to_string(),
             project: "shader-lab".to_string(),
             subtitle: String::new(),
@@ -1752,6 +1808,8 @@ mod tests {
                     title: "My Post".to_string(),
                     slug: "my-post".to_string(),
                     status: "draft".to_string(),
+                    publish_at: "2026-10-01".to_string(),
+                    comments: false,
                     ..Default::default()
                 },
                 body: "# Hello\n\nSome **bold** text with $x^2$ math.".to_string(),
@@ -1764,6 +1822,11 @@ mod tests {
         assert!(raw.contains("\"My Post\"") || raw.contains("My Post"));
         assert!(raw.contains("# Hello"));
         assert!(raw.contains("$x^2$"));
+        assert!(raw.contains("publishAt: \"2026-10-01\""));
+        assert!(raw.contains("comments: false"));
+        let doc = read_post(&root, "fluid-dynamics", "my-post").unwrap();
+        assert_eq!(doc["publishAt"], "2026-10-01");
+        assert_eq!(doc["comments"], false);
         std::fs::remove_dir_all(&root).ok();
     }
 

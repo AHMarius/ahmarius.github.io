@@ -2870,8 +2870,33 @@ footer {
 .search-result:hover {
   border-color: var(--color-link);
 }
+.search-result.is-active {
+  border-color: var(--color-link);
+  background: var(--color-card-bg-hover);
+}
+.search-result-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.search-kind {
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: var(--color-card-bg-hover);
+  color: var(--color-muted, #6b6b6b);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
 .search-result-title {
   font-weight: 600;
+}
+.search-result-excerpt {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .search-result-meta {
   font-size: 0.78rem;

@@ -127,8 +127,9 @@ ${body}
 /**
  * JSON search index consumed by the site's search widget.
  */
-export function generateSearchIndex(posts) {
+export function generateSearchIndex(posts, { pages = [] } = {}) {
   const entries = posts.map((p) => ({
+    kind: 'post',
     slug: p.slug,
     title: p.title,
     excerpt: p.excerpt || '',
@@ -140,6 +141,28 @@ export function generateSearchIndex(posts) {
     updatedDate: p.updatedDate || p.date || '',
     url: `/devlog/${p.slug}.html`,
   }));
+  const staticEntries = [
+    { kind: 'site', slug: 'home', title: 'Home', excerpt: 'Portfolio overview and featured work.', url: '/index.html' },
+    { kind: 'site', slug: 'projects', title: 'Projects', excerpt: 'Software, games, simulations, and experiments.', url: '/projects.html' },
+    { kind: 'site', slug: 'games', title: 'Games', excerpt: 'Playable games and game-development projects.', url: '/games.html' },
+    { kind: 'site', slug: 'pages', title: 'Pages', excerpt: 'Long-form project hubs and documentation.', url: '/pages.html' },
+    { kind: 'site', slug: 'about', title: 'About', excerpt: 'About Alexandru-Marius Hrițcu and contact information.', url: '/about.html' },
+    { kind: 'site', slug: 'devlog', title: 'Devlog', excerpt: 'Technical writing, project notes, and progress updates.', url: '/devlog.html' },
+  ];
+  const pageEntries = pages.map((page) => ({
+    kind: 'page',
+    slug: page.slug,
+    title: page.name,
+    excerpt: page.description || 'Project page and related posts.',
+    tags: [],
+    technologies: [],
+    project: '',
+    page: page.name,
+    date: '',
+    updatedDate: '',
+    url: `/pages/${page.slug}/index.html`,
+  }));
+  entries.push(...pageEntries, ...staticEntries);
   return JSON.stringify(entries, null, 2);
 }
 

@@ -811,14 +811,41 @@ document.addEventListener("DOMContentLoaded", initGamesPage);
  * ------------------------------------------------------------------------ */
 
 function initSiteSearch() {
-  const button = document.getElementById("nav-search-btn");
-  const overlay = document.getElementById("search-overlay");
+  let button = document.getElementById("nav-search-btn");
+  let overlay = document.getElementById("search-overlay");
+  if (!button) {
+    const menu = document.getElementById("mobile-menu") || document.querySelector(".mobile-menu");
+    if (menu) {
+      const item = document.createElement("li");
+      item.innerHTML = '<button type="button" class="nav-search-btn" id="nav-search-btn" aria-haspopup="dialog" aria-expanded="false" data-index-url="search-index.json">Search</button>';
+      menu.appendChild(item);
+      button = item.querySelector("button");
+    }
+  }
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "search-overlay";
+    overlay.className = "search-overlay";
+    overlay.hidden = true;
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Site search");
+    overlay.innerHTML = `<div class="search-overlay-panel">
+      <label for="search-input">Search the site</label>
+      <input id="search-input" type="search" placeholder="Search posts, pages, and projects..." autocomplete="off" />
+      <div id="search-results" class="search-results" role="listbox"></div>
+      <button type="button" class="search-close" id="search-close">Close</button>
+    </div>`;
+    document.body.appendChild(overlay);
+  }
   const input = document.getElementById("search-input");
   const results = document.getElementById("search-results");
   const closeBtn = document.getElementById("search-close");
   if (!button || !overlay || !input || !results) return;
 
   let index = null;
+  let visibleHits = [];
+  let activeHit = -1;
   const indexUrl = button.dataset.indexUrl || "search-index.json";
 
   async function loadIndex() {
@@ -837,6 +864,8 @@ function initSiteSearch() {
     button.setAttribute("aria-expanded", "true");
     input.value = "";
     results.innerHTML = '<p class="search-hint">Type to search posts, tags, and projects.</p>';
+    visibleHits = [];
+    activeHit = -1;
     window.setTimeout(() => input.focus(), 10);
   }
 
@@ -853,26 +882,32 @@ function initSiteSearch() {
       entry.technologies,
       entry.project,
       entry.page,
+      entry.kind,
     ].join(" ").toLowerCase();
     return term.split(/\s+/).every((word) => haystack.includes(word));
   }
 
   async function render(term) {
     if (term.length < 2) {
+      visibleHits = [];
+      activeHit = -1;
       results.innerHTML = '<p class="search-hint">Type at least 2 characters.</p>';
       return;
     }
     const entries = await loadIndex();
     const hits = entries.filter((e) => match(e, term)).slice(0, 12);
+    visibleHits = hits;
+    activeHit = hits.length ? 0 : -1;
     if (!hits.length) {
       results.innerHTML = '<p class="search-hint">No results.</p>';
       return;
     }
     results.innerHTML = hits
       .map(
-        (e) => `<a href="${e.url}" class="search-result" role="option">
-          <span class="search-result-title">${escapeHtml(e.title)}</span>
-          <span class="search-result-meta">${escapeHtml(e.page || "")} · ${escapeHtml(e.date || "")}${e.project ? " · " + escapeHtml(e.project) : ""}</span>
+        (e, index) => `<a href="${e.url}" class="search-result${index === activeHit ? " is-active" : ""}" role="option" aria-selected="${index === activeHit}" data-search-hit="${index}">
+          <span class="search-result-heading"><span class="search-kind">${escapeHtml(e.kind || "post")}</span><span class="search-result-title">${escapeHtml(e.title)}</span></span>
+          <span class="search-result-excerpt">${escapeHtml(e.excerpt || "")}</span>
+          <span class="search-result-meta">${escapeHtml(e.page || "")}${e.date ? " · " + escapeHtml(e.date) : ""}${e.project ? " · " + escapeHtml(e.project) : ""}</span>
         </a>`,
       )
       .join("");
@@ -887,6 +922,20 @@ function initSiteSearch() {
   input.addEventListener("input", () => render(input.value.trim().toLowerCase()));
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") close();
+    if (event.key === "ArrowDown" && visibleHits.length) {
+      event.preventDefault();
+      activeHit = (activeHit + 1) % visibleHits.length;
+      updateActiveResult();
+    }
+    if (event.key === "ArrowUp" && visibleHits.length) {
+      event.preventDefault();
+      activeHit = (activeHit - 1 + visibleHits.length) % visibleHits.length;
+      updateActiveResult();
+    }
+    if (event.key === "Enter" && visibleHits[activeHit]) {
+      event.preventDefault();
+      window.location.href = visibleHits[activeHit].url;
+    }
   });
   document.addEventListener("click", (event) => {
     if (isVisible() && !overlay.contains(event.target) && event.target !== button) close();
@@ -897,7 +946,20 @@ function initSiteSearch() {
       event.preventDefault();
       isVisible() ? close() : open();
     }
+    if (event.key === "/" && !/input|textarea|select/i.test(document.activeElement?.tagName || "")) {
+      event.preventDefault();
+      if (!isVisible()) open();
+    }
   });
+
+  function updateActiveResult() {
+    results.querySelectorAll("[data-search-hit]").forEach((result, index) => {
+      const selected = index === activeHit;
+      result.classList.toggle("is-active", selected);
+      result.setAttribute("aria-selected", String(selected));
+      if (selected) result.scrollIntoView({ block: "nearest" });
+    });
+  }
 
   function escapeHtml(value = "") {
     return String(value)

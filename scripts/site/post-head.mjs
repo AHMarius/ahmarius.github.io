@@ -24,7 +24,7 @@ export function postHeadExtras(post, { cover } = {}) {
   const datePublished = post.date || '';
   const dateModified = post.updatedDate || post.date || '';
 
-  const ld = JSON.stringify({
+  const ld = safeStructuredData({
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: post.title,
@@ -39,7 +39,7 @@ export function postHeadExtras(post, { cover } = {}) {
     },
   });
 
-  const breadcrumbLd = JSON.stringify({
+  const breadcrumbLd = safeStructuredData({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
@@ -59,8 +59,12 @@ export function postHeadExtras(post, { cover } = {}) {
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${excerpt}" />
     <meta name="twitter:image" content="${image}" />
-    <script type="application/ld+json">${escapeHtml(ld)}</script>
-    <script type="application/ld+json">${escapeHtml(breadcrumbLd)}</script>`;
+    <script type="application/ld+json">${ld}</script>
+    <script type="application/ld+json">${breadcrumbLd}</script>`;
+}
+
+function safeStructuredData(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
 /** giscus embed script for a post, when comments aren't disabled. */
@@ -93,6 +97,7 @@ export function addToc(bodyHtml, headings) {
   if (usable.length < 3) return { html: bodyHtml, toc: '' };
 
   const seen = new Map();
+  const resolved = [];
   let html = bodyHtml;
   // Inject ids by matching heading text order; we operate on the heading list
   // computed from the markdown source so ids remain stable/human-readable.
@@ -101,18 +106,15 @@ export function addToc(bodyHtml, headings) {
     const count = seen.get(id) || 0;
     if (count > 0) id = `${id}-${count}`;
     seen.set(h.slug, (seen.get(h.slug) || 0) + 1);
+    resolved.push({ ...h, id });
     // Rough but safe: replace the opening tag for an exact heading text.
     const re = new RegExp(`<h${h.level}([^>]*)>${escapeRegExp(h.rendered || '')}</h${h.level}>`);
     html = html.replace(re, `<h${h.level}$1 id="${escapeAttribute(id)}">${h.rendered || ''}</h${h.level}>`);
   }
 
-  const items = usable
+  const items = resolved
     .map((h) => {
-      let id = h.slug;
-      const count = seen.get(h.slug) || 0;
-      if (count > 0) id = `${h.slug}-${count}`;
-      seen.set(h.slug, (seen.get(h.slug) || 0) + 1);
-      return `<li class="post-toc-l${h.level}"><a href="#${id}">${escapeHtml(h.text)}</a></li>`;
+      return `<li class="post-toc-l${h.level}"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`;
     })
     .join('');
   const toc = `<nav class="post-toc" aria-label="Table of contents">

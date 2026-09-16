@@ -76,6 +76,7 @@ function editorActive(): boolean {
 /** Drop the editor bindings when leaving the post editor, so a later publish
  * / preview / Ctrl+S can't invoke a stale save closure against removed DOM. */
 function resetEditorState() {
+  state.editor = null;
   state.editorSave = undefined;
   state.editorOriginalSlug = "";
   state.editorAssetSlug = "";
@@ -86,6 +87,11 @@ function resetEditorState() {
     state.autosaveTimer = 0;
   }
   newPostSessionId = "";
+}
+
+function confirmLeaveEditor(): boolean {
+  if (!state.editorDirty) return true;
+  return window.confirm("This post has unsaved changes. Discard them and leave the editor?");
 }
 
 // ---------- Fire Tauri or fall back for browser dev ----------
@@ -257,11 +263,14 @@ function scheduleAutosave() {
 function recoveryMetadata() {
   const value = (id: string) => (($(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? "");
   const featured = $("#po-featured") as HTMLInputElement | null;
+  const comments = $("#po-comments") as HTMLInputElement | null;
   return {
     title: value("#po-title"), slug: value("#po-slug"), status: value("#po-status"), date: value("#po-date"),
+    publishAt: value("#po-publish-at"),
     subtitle: value("#po-subtitle"), cover: value("#po-cover"), excerpt: value("#po-excerpt"), tags: value("#po-tags"),
     technologies: value("#po-tech"), project: value("#po-project"), series: value("#po-series"), part: value("#po-part"),
     featured: Boolean(featured?.checked),
+    comments: comments?.checked !== false,
   };
 }
 
@@ -273,11 +282,15 @@ function restoreRecoveryMetadata(metadata: any) {
   };
   set("#po-title", metadata.title); set("#po-slug", metadata.slug); set("#po-status", metadata.status);
   set("#po-date", metadata.date); set("#po-subtitle", metadata.subtitle); set("#po-cover", metadata.cover);
+  set("#po-publish-at", metadata.publishAt);
   set("#po-excerpt", metadata.excerpt); set("#po-tags", metadata.tags); set("#po-tech", metadata.technologies);
   set("#po-project", metadata.project); set("#po-series", metadata.series); set("#po-part", metadata.part);
   const featured = $("#po-featured") as HTMLInputElement | null;
   if (featured && typeof metadata.featured === "boolean") featured.checked = metadata.featured;
+  const comments = $("#po-comments") as HTMLInputElement | null;
+  if (comments && typeof metadata.comments === "boolean") comments.checked = metadata.comments;
   updateSeriesChip();
+  updateEditorInsights();
 }
 
 async function checkRecovery(page: string, slug: string) {
@@ -368,6 +381,7 @@ app.innerHTML = `
         <button id="save-btn" class="btn primary">Save Draft</button>
         <button id="publish-btn" class="btn publish">Publish</button>
         <button id="settings-btn" class="btn ghost" title="Settings">⚙</button>
+        <button id="command-btn" class="btn ghost" title="Command palette (Ctrl+Shift+K)">⌘</button>
       </div>
     </header>
     <div class="app-body">
@@ -409,12 +423,14 @@ function renderSidebar() {
   });
   treeEl.querySelectorAll(".tree-row").forEach((r: any) => {
     r.addEventListener("click", () => {
+      if (!confirmLeaveEditor()) return;
       const slug = (r as HTMLElement).dataset.id;
       showPageView(slug!);
     });
   });
   treeEl.querySelectorAll(".tree-post").forEach((r: any) => {
     r.addEventListener("click", () => {
+      if (!confirmLeaveEditor()) return;
       const [page, slug] = (r as HTMLElement).dataset.id!.split(":");
       showPostView(page, slug);
     });
@@ -550,7 +566,7 @@ async function openSyncFile(path: string) {
       try {
         const saved = await writeSyncFile(syncGatewayUrl(), state.syncSession!.token, path, doc.sha, body.value);
         doc.sha = saved.sha;
-        message.textContent = "Saved to GitHub. Pages will publish after the workflow completes.";
+        message.textContent = "Saved to GitHub source. Run Publish on the desktop to rebuild and deploy the site.";
         message.className = "success-text";
       } catch (error) {
         message.textContent = String((error as any).message || error);
@@ -580,6 +596,10 @@ function showDashboard() {
     const total = state.posts.length;
     const published = state.posts.filter((post: any) => post.status === "published").length;
     const drafts = total - published;
+    const today = new Date().toISOString().slice(0, 10);
+    const scheduled = state.posts
+      .filter((post: any) => post.status === "published" && post.publish_at && post.publish_at > today)
+      .sort((a: any, b: any) => String(a.publish_at).localeCompare(String(b.publish_at)));
     const changed = [
       ...(git?.unstaged || []),
       ...(git?.untracked || []).map((path: string) => ({ path, status: "added" })),
@@ -589,6 +609,7 @@ function showDashboard() {
       <h1 class="page-title">Dashboard</h1>
       <div class="dashboard-stats">
         <article class="card dashboard-stat"><span class="muted">Posts</span><strong>${total}</strong><span>${published} published · ${drafts} draft${drafts === 1 ? "" : "s"}</span></article>
+        <article class="card dashboard-stat"><span class="muted">Scheduled</span><strong>${scheduled.length}</strong><span>${scheduled.length ? `Next: ${esc(scheduled[0].publish_at)}` : "Nothing queued"}</span></article>
         <article class="card dashboard-stat"><span class="muted">Pages</span><strong>${state.tree.length}</strong><span>Organize writing hubs</span></article>
         <article class="card dashboard-stat"><span class="muted">Changes ready</span><strong>${changed.length}</strong><span>${deleted ? `${deleted} deletion${deleted === 1 ? "" : "s"} included` : "Nothing deleted"}</span></article>
         <article class="card dashboard-stat"><span class="muted">Safety net</span><strong>${recoveries.length + trash.length}</strong><span>${recoveries.length} draft recovery · ${trash.length} deleted item${trash.length === 1 ? "" : "s"}</span></article>
@@ -602,6 +623,13 @@ function showDashboard() {
           ${recoveries.length ? '<button id="dash-recovery" class="btn">Recover drafts</button>' : ""}
         </div>
         <p class="muted dashboard-sync">${git ? `Branch ${esc(git.branch)} · ${git.ahead || 0} ahead · ${git.behind || 0} behind` : "Git status is unavailable. Check the repository path in Settings."}</p>
+      </section>
+      <section class="dashboard-section">
+        <div class="dashboard-section-head"><h2>Publishing calendar</h2><span class="muted">Posts stay private before this date; run Publish on or after it to deploy them.</span></div>
+        <div class="rows">${scheduled.length
+          ? scheduled.slice(0, 8).map((post: any) => `<div class="row"><div class="row-main"><strong>${esc(post.title)}</strong><span class="muted">${esc(post.page)}</span><span class="pill scheduled">${esc(post.publish_at)}</span></div><div class="row-actions"><button class="btn" data-edit-scheduled="${esc(post.page)}|${esc(post.slug)}">Edit</button></div></div>`).join("")
+          : '<div class="empty-state compact"><h3>No scheduled posts</h3><p>Set a future publish date in any post editor to add it here.</p></div>'
+        }</div>
       </section>
       <section class="dashboard-section">
         <div class="dashboard-section-head"><h2>Unpublished changes</h2><span class="muted">Only content and generated site output are staged when you publish.</span></div>
@@ -621,6 +649,12 @@ function showDashboard() {
     $("#dash-all-posts", v)!.addEventListener("click", showAllPostsView);
     $("#dash-publish", v)!.addEventListener("click", openPublish);
     $("#dash-recovery", v)?.addEventListener("click", openRecoveryDashboard);
+    $$('[data-edit-scheduled]', v).forEach((button) => {
+      button.addEventListener("click", () => {
+        const [page, slug] = (button as HTMLElement).dataset.editScheduled!.split("|");
+        showPostView(page, slug);
+      });
+    });
     $("#dash-empty-trash", v)?.addEventListener("click", async () => {
       if (!(await confirmDialog("Empty deleted items?", "This permanently removes all items in the dashboard trash. Published site files are not changed until you publish.", "Empty trash"))) return;
       try {
@@ -1101,10 +1135,13 @@ function renderAllPosts() {
     const seriesChip = p.series
       ? `<span class="pill series">${esc(p.series)}${p.part ? ` · #${p.part}` : ""}</span>`
       : "";
+    const scheduledChip = p.status === "published" && p.publish_at && p.publish_at > new Date().toISOString().slice(0, 10)
+      ? `<span class="pill scheduled">Scheduled ${esc(p.publish_at)}</span>`
+      : "";
     const row = el("div", "row");
     row.innerHTML = `
       <div class="row-main"><strong>${esc(p.title)}</strong><span class="muted">${esc(p.page)}</span>
-        <span class="pill ${esc(p.status)}">${esc(p.status)}</span>${p.featured ? '<span class="pill featured">★</span>' : ""}${seriesChip}</div>
+        <span class="pill ${esc(p.status)}">${esc(p.status)}</span>${scheduledChip}${p.featured ? '<span class="pill featured">★</span>' : ""}${seriesChip}</div>
       <div class="row-meta">${esc(humanDate(p.updated_date))}</div>
       <div class="row-actions">
         <button data-edit="${esc(p.page)}|${esc(p.slug)}" class="btn">Edit</button>
@@ -1445,6 +1482,7 @@ const openEditor = (page: string) => {
       state.editorDirty = true;
       state.editor?.setStatus("Unsaved changes");
       scheduleAutosave();
+      updateEditorInsights();
     },
     {
       pickImage: () => pickAndInsertImage(page),
@@ -1552,6 +1590,49 @@ function updateSeriesChip() {
   chip.textContent = series ? (part ? `Part ${part} of ${series}` : series) : "";
 }
 
+function updateEditorInsights() {
+  const host = $("#po-insights");
+  if (!host || !state.editor) return;
+  const body = state.editor.getValue();
+  const plain = body
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[#>*_~|\-]/g, " ");
+  const words = plain.trim() ? plain.trim().split(/\s+/).length : 0;
+  const readMinutes = Math.max(1, Math.ceil(words / 180));
+  const headings = (body.match(/^#{2,3}\s+.+$/gm) || []).length;
+  const links = (body.match(/\[[^\]]+\]\([^)]+\)/g) || []).length;
+  const images = [...body.matchAll(/!\[([^\]]*)\]\([^)]+\)/g)];
+  const missingAlt = images.filter((match) => !match[1].trim()).length;
+  const title = (($("#po-title") as HTMLInputElement | null)?.value || "").trim();
+  const excerpt = (($("#po-excerpt") as HTMLTextAreaElement | null)?.value || "").trim();
+  const tags = splitChips((($("#po-tags") as HTMLInputElement | null)?.value || ""));
+  const cover = (($("#po-cover") as HTMLInputElement | null)?.value || "").trim();
+  const status = (($("#po-status") as HTMLSelectElement | null)?.value || "draft");
+  const publishAt = (($("#po-publish-at") as HTMLInputElement | null)?.value || "");
+  const today = new Date().toISOString().slice(0, 10);
+  const checks = [
+    { ok: title.length >= 20 && title.length <= 70, label: `Title ${title.length}/70`, hint: "Aim for 20–70 characters." },
+    { ok: excerpt.length >= 80 && excerpt.length <= 180, label: `Excerpt ${excerpt.length}/180`, hint: "A useful search/social summary is usually 80–180 characters." },
+    { ok: words >= 150, label: `${words} words`, hint: "Short notes are fine; substantial articles usually exceed 150 words." },
+    { ok: headings > 0, label: `${headings} section heading${headings === 1 ? "" : "s"}`, hint: "Add H2/H3 headings to make longer posts scannable." },
+    { ok: tags.length > 0, label: `${tags.length} tag${tags.length === 1 ? "" : "s"}`, hint: "Tags power archives, related posts, and search." },
+    { ok: Boolean(cover), label: cover ? "Cover selected" : "No cover", hint: "A cover improves cards and social previews." },
+    { ok: missingAlt === 0, label: missingAlt ? `${missingAlt} image${missingAlt === 1 ? "" : "s"} missing alt text` : `${images.length} image${images.length === 1 ? "" : "s"} checked`, hint: "Describe meaningful images between the square brackets." },
+  ];
+  const schedule = publishAt
+    ? status === "published" && publishAt > today
+      ? `<span class="insight-schedule good">Scheduled for ${esc(publishAt)}</span>`
+      : `<span class="insight-schedule ${status === "draft" ? "warn" : "good"}">${status === "draft" ? "Schedule is inactive while status is draft" : `Publishes immediately (${esc(publishAt)} has passed)`}</span>`
+    : '<span class="insight-schedule muted">No publish date — publishes immediately when status is published.</span>';
+  host.innerHTML = `
+    <div class="insight-summary"><strong>${words}</strong> words · <strong>${readMinutes}</strong> min read · <strong>${links}</strong> link${links === 1 ? "" : "s"}</div>
+    ${schedule}
+    <div class="insight-checks">${checks.map((check) => `<div class="insight-check ${check.ok ? "good" : "warn"}" title="${esc(check.hint)}"><span>${check.ok ? "✓" : "○"}</span>${esc(check.label)}</div>`).join("")}</div>`;
+}
+
 function openPostEditor(page: string, post: PostDoc | null) {
   state.view = { kind: "post", page, slug: post?.slug || "" };
   newPostSessionId = post ? "" : sessionId();
@@ -1572,8 +1653,10 @@ function openPostEditor(page: string, post: PostDoc | null) {
       <label>Status <select id="po-status"><option>draft</option><option>published</option></select></label>
       <label>Page <input id="po-page" value="${esc(page)}" readonly /></label>
       <label>Date <input id="po-date" type="date" /></label>
+      <label>Publish on <input id="po-publish-at" type="date" /><span class="field-help">Optional; keep status Published, then run Publish on or after this date.</span></label>
       <label>Subtitle <input id="po-subtitle" /></label>
       <label class="check-label">Featured <input id="po-featured" type="checkbox" /></label>
+      <label class="check-label">Comments <input id="po-comments" type="checkbox" checked /></label>
     </div>
     <div class="cover-field">
       <div class="cover-field-row"><label>Cover <input id="po-cover" placeholder="auto or assets/posts/…" /></label><button data-pick-cover data-kind="post" class="btn" type="button">Choose…</button></div>
@@ -1594,6 +1677,7 @@ function openPostEditor(page: string, post: PostDoc | null) {
       <button id="shot-btn" class="btn" title="Capture a screenshot and insert it (Ctrl+Shift+X)">📷 Screenshot</button>
       <span id="po-series-chip" class="series-chip muted"></span>
     </div>
+    <aside id="po-insights" class="editor-insights" aria-live="polite"></aside>
   `;
   v.append(meta, openEditor(page).getElement());
   wireCoverField(
@@ -1610,12 +1694,14 @@ function openPostEditor(page: string, post: PostDoc | null) {
     ($("#po-slug") as HTMLInputElement).value = post.slug;
     ($("#po-status") as HTMLSelectElement).value = post.status;
     ($("#po-date") as HTMLInputElement).value = post.date;
+    ($("#po-publish-at") as HTMLInputElement).value = post.publishAt || "";
     ($("#po-subtitle") as HTMLInputElement).value = post.subtitle || "";
     ($("#po-excerpt") as HTMLTextAreaElement).value = post.excerpt || "";
     ($("#po-tags") as HTMLInputElement).value = (post.tags || []).join(", ");
     ($("#po-tech") as HTMLInputElement).value = (post.technologies || []).join(", ");
     ($("#po-project") as HTMLSelectElement).value = post.project || "";
     ($("#po-featured") as HTMLInputElement).checked = Boolean(post.featured);
+    ($("#po-comments") as HTMLInputElement).checked = post.comments !== false;
     ($("#po-cover") as HTMLInputElement).value = post.cover || "";
     ($("#po-series") as HTMLInputElement).value = post.series || "";
     ($("#po-part") as HTMLInputElement).value = post.part ? String(post.part) : "";
@@ -1648,11 +1734,13 @@ function openPostEditor(page: string, post: PostDoc | null) {
       state.editorDirty = true;
       state.editor?.setStatus("Unsaved changes");
       scheduleAutosave();
+      updateEditorInsights();
     });
     field.addEventListener("change", () => {
       state.editorDirty = true;
       state.editor?.setStatus("Unsaved changes");
       scheduleAutosave();
+      updateEditorInsights();
     });
   });
   $("#shot-btn")!.onclick = () => cell(() => takeScreenshot(page));
@@ -1680,7 +1768,9 @@ function openPostEditor(page: string, post: PostDoc | null) {
     if (ai.technologies?.length) ($("#po-tech") as HTMLInputElement).value = ai.technologies.join(", ");
     state.editor?.setStatus("Suggested metadata applied — review before saving");
     setStatus("Metadata suggested");
+    updateEditorInsights();
   });
+  updateEditorInsights();
 }
 
 function prefsDefaultStatus() {
@@ -1715,8 +1805,10 @@ function bindPostSave(page: string) {
       date: ($("#po-date") as HTMLInputElement).value,
       updated_date: new Date().toISOString().slice(0, 10),
       status: ($("#po-status") as HTMLSelectElement).value,
+      publish_at: ($("#po-publish-at") as HTMLInputElement).value,
       excerpt: ($("#po-excerpt") as HTMLTextAreaElement).value,
       featured: ($("#po-featured") as HTMLInputElement).checked,
+      comments: ($("#po-comments") as HTMLInputElement).checked,
       page,
       project: ($("#po-project") as HTMLSelectElement).value.trim(),
       subtitle: ($("#po-subtitle") as HTMLInputElement).value.trim(),
@@ -1799,10 +1891,98 @@ function currentPostPage(): string {
   return state.view.kind === "post" ? state.view.page : "";
 }
 
+type PaletteAction = { label: string; detail: string; keywords: string; run: () => void };
+
+function paletteCanRun(action: PaletteAction): boolean {
+  return ["Build preview", "Publish"].includes(action.label) || confirmLeaveEditor();
+}
+
+async function openCommandPalette() {
+  document.querySelector(".command-overlay")?.remove();
+  const posts = state.posts.length ? state.posts : ((await cell(() => call("list_posts"))) || []);
+  state.posts = posts;
+  const actions: PaletteAction[] = [
+    { label: "Dashboard", detail: "Workspace overview", keywords: "home overview", run: showDashboard },
+    { label: "All posts", detail: "Filter and review content", keywords: "content writing", run: showAllPostsView },
+    { label: "New post", detail: "Create a draft", keywords: "write create", run: () => openPostEditor(promptPageForPost(), null) },
+    { label: "Pages", detail: "Manage site sections", keywords: "hubs sections", run: showPagesView },
+    { label: "Projects", detail: "Manage portfolio projects", keywords: "portfolio", run: showProjectsView },
+    { label: "Build preview", detail: "Generate a local preview", keywords: "build site", run: () => void cell(doPreview) },
+    { label: "Publish", detail: "Validate, commit, and deploy", keywords: "deploy github pages", run: openPublish },
+    { label: "Settings", detail: "Publishing, analytics, and appearance", keywords: "preferences configuration", run: showSettings },
+    { label: "Recover drafts", detail: "Review autosaved content", keywords: "autosave crash recovery", run: openRecoveryDashboard },
+    ...state.tree.map((page) => ({
+      label: page.name,
+      detail: `Page · ${page.slug}`,
+      keywords: `page ${page.slug}`,
+      run: () => showPageView(page.slug),
+    })),
+    ...posts.map((post: any) => ({
+      label: post.title,
+      detail: `${post.status === "published" ? "Published" : "Draft"} · ${post.page}`,
+      keywords: `post ${post.slug} ${post.page} ${(post.tags || []).join(" ")} ${post.series || ""}`,
+      run: () => showPostView(post.page, post.slug),
+    })),
+  ];
+  const overlay = el("div", "overlay command-overlay");
+  overlay.innerHTML = `<div class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="command-search-row"><span aria-hidden="true">⌕</span><input id="command-search" type="search" placeholder="Search actions, pages, and posts…" autocomplete="off" /><kbd>Esc</kbd></div>
+    <div id="command-results" class="command-results" role="listbox"></div>
+    <div class="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> open</span><span>Ctrl+Shift+K</span></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const input = $("#command-search", overlay) as HTMLInputElement;
+  const results = $("#command-results", overlay) as HTMLElement;
+  let filtered = actions;
+  let active = 0;
+  const close = () => overlay.remove();
+  const render = () => {
+    const query = input.value.trim().toLowerCase();
+    filtered = actions.filter((action) => `${action.label} ${action.detail} ${action.keywords}`.toLowerCase().includes(query)).slice(0, 14);
+    active = Math.min(active, Math.max(0, filtered.length - 1));
+    results.innerHTML = filtered.length
+      ? filtered.map((action, index) => `<button type="button" class="command-result${index === active ? " active" : ""}" data-command-index="${index}" role="option" aria-selected="${index === active}"><span><strong>${esc(action.label)}</strong><small>${esc(action.detail)}</small></span><span aria-hidden="true">↵</span></button>`).join("")
+      : '<p class="command-empty">No matching actions.</p>';
+    $$('[data-command-index]', results).forEach((button) => {
+      button.addEventListener("mouseenter", () => {
+        const next = Number((button as HTMLElement).dataset.commandIndex);
+        if (next !== active) { active = next; render(); }
+      });
+      button.addEventListener("click", () => {
+        const action = filtered[Number((button as HTMLElement).dataset.commandIndex)];
+        if (!action || !paletteCanRun(action)) return;
+        close();
+        action.run();
+      });
+    });
+  };
+  input.addEventListener("input", () => { active = 0; render(); });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+    else if (event.key === "ArrowDown") { event.preventDefault(); active = (active + 1) % Math.max(1, filtered.length); render(); }
+    else if (event.key === "ArrowUp") { event.preventDefault(); active = (active - 1 + Math.max(1, filtered.length)) % Math.max(1, filtered.length); render(); }
+    else if (event.key === "Enter" && filtered[active]) {
+      event.preventDefault();
+      const action = filtered[active];
+      if (!paletteCanRun(action)) return;
+      close();
+      action.run();
+    }
+  });
+  overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+  render();
+  input.focus();
+}
+
 function installShortcuts() {
   document.addEventListener("keydown", (e) => {
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
+    if (mod && e.shiftKey && key === "k") {
+      e.preventDefault();
+      void openCommandPalette();
+      return;
+    }
     if (mod && key === "s") {
       e.preventDefault();
       if (state.editorSave && editorActive()) void cell(state.editorSave);
@@ -1964,8 +2144,8 @@ function openPublish() {
           ? `<p class="error-text">Branch is <strong>${st.behind} behind</strong> remote — push will be rejected.</p>`
           : "";
     const deployBranchNotice = st.branch !== "main"
-      ? `<p class="error-text">You are publishing <strong>${esc(st.branch)}</strong>, not <strong>main</strong>. The Pages workflow deploys only main, so this push will not update the live site until the branch is merged into main.</p>`
-      : "";
+      ? `<p class="muted">This checkout is on <strong>${esc(st.branch)}</strong>. Publish will fast-forward <strong>main</strong> to this commit, then deploy the local build to <strong>gh-pages</strong>.</p>`
+      : `<p class="muted">Publish will push source to <strong>main</strong>, then deploy the local build to <strong>gh-pages</strong>.</p>`;
     const pullBtn = syncState
       ? `<div class="modal-actions"><button id="pub-cancel3" class="btn">Cancel</button><button id="pub-pull" class="btn publish">Pull latest (rebase)</button></div>`
       : "";
@@ -1981,7 +2161,7 @@ function openPublish() {
       ${diffText ? `<details class="diff-details"><summary>View working-tree diff</summary><pre class="diffbox diff-big">${esc(diffText)}</pre></details>` : ""}
       ${unrel}
       <label>Commit message<input id="pub-msg" value="Update portfolio content" /></label>
-      <p class="muted">Will lint posts, run the publish build, stage additions, edits, and deletions in content and generated site output, commit, push, and fire any configured deploy hook.</p>
+      <p class="muted">Will lint and build locally, commit the reviewed source/output, fast-forward main, and deploy only the public snapshot to gh-pages. GitHub Actions is not used.</p>
     `;
     $("#pub-cancel3", overlay)?.addEventListener("click", () => overlay.remove());
     $("#pub-pull", overlay)?.addEventListener("click", async () => {
@@ -2013,6 +2193,7 @@ function openPublish() {
       go.textContent = "Pull latest first";
     }
     $("#pub-go", overlay)!.onclick = async () => {
+      const requestedMessage = ($("#pub-msg", overlay) as HTMLInputElement)?.value.trim() || "Update portfolio content";
       $("#pub-go", overlay)!.disabled = true;
       body.innerHTML = `<p class="muted">Linting posts…</p>`;
       try {
@@ -2071,27 +2252,23 @@ function openPublish() {
         const deleted = (status2.unstaged || []).filter((f: any) => f.status === "deleted" && stagePat.test(f.path));
         body.innerHTML = `<p class="muted">Staging ${paths.size} file(s)${deleted.length ? `, including ${deleted.length} deletion${deleted.length === 1 ? "" : "s"}` : ""}…</p>`;
         const stagedPaths = Array.from(paths);
-        await call("git_stage_paths", { paths: stagedPaths });
-        if (paths.size === 0) {
-          body.innerHTML = `<p class="muted">Nothing to stage — no content changes to publish.</p>
-            <div class="modal-actions"><button id="pub-close-none" class="btn">Close</button></div>`;
-          $("#pub-close-none", overlay)!.onclick = () => overlay.remove();
-          $("#pub-go", overlay)!.remove();
-          return;
-        }
-        const msg = ($("#pub-msg", overlay) as HTMLInputElement)?.value || "Update portfolio content";
-        let commitHash = "";
-        try {
-          commitHash = await call("git_commit", { message: msg });
-        } catch (e) {
-          await unstageQuietly(stagedPaths);
-          body.innerHTML = `<p class="error-text">Commit failed — nothing was published.</p>
-            <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
-            <p class="muted">Your changes are still in the working tree (unstaged). Fix the error and retry.</p>
-            <div class="modal-actions"><button id="pub-close-commit" class="btn">Close</button></div>`;
-          $("#pub-close-commit", overlay)!.onclick = () => overlay.remove();
-          $("#pub-go", overlay)!.remove();
-          return;
+        let commitHash = await call("git_last_commit");
+        if (stagedPaths.length > 0) {
+          await call("git_stage_paths", { paths: stagedPaths });
+          try {
+            commitHash = await call("git_commit", { message: requestedMessage });
+          } catch (e) {
+            await unstageQuietly(stagedPaths);
+            body.innerHTML = `<p class="error-text">Commit failed — nothing was published.</p>
+              <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
+              <p class="muted">Your changes are still in the working tree (unstaged). Fix the error and retry.</p>
+              <div class="modal-actions"><button id="pub-close-commit" class="btn">Close</button></div>`;
+            $("#pub-close-commit", overlay)!.onclick = () => overlay.remove();
+            $("#pub-go", overlay)!.remove();
+            return;
+          }
+        } else {
+          body.innerHTML = `<p class="muted">No new content changes; redeploying the current validated snapshot…</p>`;
         }
         body.innerHTML = `<p class="muted">Pushing…</p>`;
         let push = "";
@@ -2108,6 +2285,19 @@ function openPublish() {
           $("#pub-go", overlay)!.remove();
           return;
         }
+        body.innerHTML = `<p class="muted">Source is on main. Deploying the local public snapshot to gh-pages…</p>`;
+        let deployment = "";
+        try {
+          deployment = await call("deploy_pages");
+        } catch (e) {
+          body.innerHTML = `<p class="error-text">Source was pushed to main, but the Pages snapshot failed to deploy.</p>
+            <pre class="diffbox diff-big">${esc(String((e as any).message || e))}</pre>
+            <p class="muted">Fix the Git/GitHub error and press Publish again; a redeploy does not require a new content commit.</p>
+            <div class="modal-actions"><button id="pub-close-deploy" class="btn">Close</button></div>`;
+          $("#pub-close-deploy", overlay)!.onclick = () => overlay.remove();
+          $("#pub-go", overlay)!.remove();
+          return;
+        }
         let hookLine = "";
         try {
           const hook = await call("trigger_deploy_hook");
@@ -2115,13 +2305,14 @@ function openPublish() {
             ? `<p class="muted">Deploy hook fired (HTTP ${esc(hook.status || 200)}). ${esc(hook.detail || "")}</p>`
             : `<p class="muted">Deploy hook failed (${esc(hook.detail || `HTTP ${hook.status}`)}) — the push may still deploy the site.</p>`;
         } catch {
-          hookLine = `<p class="muted">No deploy hook configured. The GitHub push itself deploys via Pages/GitHub Actions.</p>`;
+          hookLine = `<p class="muted">No optional post-deploy hook configured.</p>`;
         }
         body.innerHTML = `
           <p class="success-text">Published ✓</p>
-          <p>Commit: <code>${esc(commitHash || "?")}</code> on <strong>${esc(status2.branch)}</strong></p>
+          <p>Source commit: <code>${esc(commitHash || "?")}</code> on <strong>main</strong></p>
           <p>Pushed file(s): <code>${paths.size}</code></p>
           <p class="muted">${esc(push || "")}</p>
+          <p class="muted">${esc(deployment || "")}</p>
           ${hookLine}
         `;
         $("#pub-go", overlay)!.remove();
@@ -2302,7 +2493,7 @@ function showSettings() {
       <label>Syndicate via
         <select id="set-syndicate"><option value="none">None</option><option value="mastodon">Mastodon</option><option value="bluesky">Bluesky</option></select>
       </label>
-      <p class="muted">Deploy hook fires after a successful push and lets a CI service rebuild the live site.</p>
+      <p class="muted">Optional: fires after the gh-pages snapshot has been deployed. It is not needed for GitHub Pages.</p>
     </details>
     <details class="settings-section">
       <summary>Phone sync</summary>
@@ -2460,6 +2651,7 @@ async function renderAuthStatus() {
 function wireTop() {
   $$(".topnav2 button").forEach((b) => {
     b.addEventListener("click", () => {
+      if (!confirmLeaveEditor()) return;
       const nav = (b as HTMLElement).dataset.nav;
       if (nav === "dashboard") showDashboard();
       else if (nav === "sync") showSyncView();
@@ -2470,9 +2662,10 @@ function wireTop() {
       else if (nav === "newpostpdf") void cell(newPostFromPdf);
     });
   });
-  $("#new-page-btn")!.onclick = () => openPageEditor();
+  $("#new-page-btn")!.onclick = () => { if (confirmLeaveEditor()) openPageEditor(); };
   $("#publish-btn")!.onclick = openPublish;
-  $("#settings-btn")!.onclick = showSettings;
+  $("#settings-btn")!.onclick = () => { if (confirmLeaveEditor()) showSettings(); };
+  $("#command-btn")!.onclick = () => void openCommandPalette();
   $("#global-search")!.addEventListener("input", (e: Event) => {
     const q = (e.target as HTMLInputElement).value.trim().toLowerCase();
     renderSidebarFiltered(q);
@@ -2495,4 +2688,10 @@ boot().then(() => {
   installShortcuts();
   installGlobalDrop();
   installTauriDrop();
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (!state.editorDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
 });

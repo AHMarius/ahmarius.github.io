@@ -10,6 +10,14 @@ function isoFrom(value) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
+/** Future-dated published posts behave like drafts until their publish date. */
+export function effectivePostStatus(status = 'draft', publishAt = '', now = Date.now()) {
+  if (status !== 'published' || !publishAt) return status;
+  const at = new Date(String(publishAt).endsWith('Z') ? publishAt : `${publishAt}T00:00:00Z`);
+  if (Number.isNaN(at.getTime())) return status;
+  return at.getTime() <= now ? status : 'draft';
+}
+
 export async function postDates(filePath) {
   try {
     const raw = await fs.readFile(filePath, 'utf8');

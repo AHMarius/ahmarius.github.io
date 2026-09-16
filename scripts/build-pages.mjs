@@ -2,12 +2,13 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { PAGES_ROOT, sanitizeCover } from './content/paths.mjs';
 import { buildPageHierarchy } from './content/pages.mjs';
-import { renderMarkdown, truncateText, buildReadTime, rewriteAssetUrls } from './content/markdown.mjs';
+import { renderMarkdown, truncateText, buildReadTime, headingsFromMarkdown, rewriteAssetUrls } from './content/markdown.mjs';
 import { postAssetsBase, copyAllPostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute } from './content/templates.mjs';
-import { computePageUpdatedDate } from './content/metadata.mjs';
+import { computePageUpdatedDate, effectivePostStatus } from './content/metadata.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
 import { validatePageMeta, assertValidMeta } from './content/schema.mjs';
+import { addToc, postHeadExtras } from './site/post-head.mjs';
 
 const ROOT = process.cwd();
 const OUT_DIR = path.join(ROOT, 'pages');
@@ -143,7 +144,7 @@ function postsForPage(posts, slug) {
 function publishedCountsByDir(postsByPage) {
   const counts = new Map();
   for (const [dir, posts] of postsByPage) {
-    counts.set(dir, posts.filter((p) => p.status === 'published').length);
+    counts.set(dir, posts.filter((p) => effectivePostStatus(p.status, p.publishAt) === 'published').length);
   }
   return counts;
 }
@@ -158,11 +159,14 @@ function readPostPublic(filePath, pageSlug) {
       slug,
       date: meta.date || '',
       updatedDate: meta.updatedDate || meta.date || '',
-      status: meta.status || 'draft',
+      publishAt: meta.publishAt || meta.publish_at || '',
+      status: effectivePostStatus(meta.status || 'draft', meta.publishAt || meta.publish_at || ''),
       excerpt: meta.excerpt || truncateText(body, 180),
       tags: Array.isArray(meta.tags) ? meta.tags : [],
       technologies: Array.isArray(meta.technologies) ? meta.technologies : [],
       subtitle: meta.subtitle || '',
+      cover: meta.cover || '',
+      comments: meta.comments !== false,
       series: meta.series || '',
       part: Number.parseInt(meta.part, 10) || 0,
       body,
@@ -173,10 +177,9 @@ function readPostPublic(filePath, pageSlug) {
 }
 
 function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
-  const bodyRaw = renderMarkdown(
-    post.body.replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '').trim(),
-  );
-  const body = rewriteAssetUrls(bodyRaw, postAssetsBase(post.pageSlug, post.slug));
+  const normalizedBody = post.body.replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '').trim();
+  const bodyRaw = rewriteAssetUrls(renderMarkdown(normalizedBody), postAssetsBase(post.pageSlug, post.slug));
+  const { html: body, toc } = addToc(bodyRaw, headingsFromMarkdown(normalizedBody));
   const crumbHtml = crumbs.map((c) => `<span>${escapeHtml(c.name)}</span>`).join(' <span class="crumb-sep">/</span> ');
   const parentCrumb = crumbs.length > 0 ? `<a class="devlog-link" href="../${crumbs[crumbs.length - 1].slug}/index.html">← ${escapeHtml(crumbs[crumbs.length - 1].name)}</a>` : '';
 
@@ -188,7 +191,12 @@ function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
         <div class="devlog-meta">${escapeHtml(post.date)}</div>
         <h1>${escapeHtml(post.title)}</h1>
         ${post.subtitle ? `<p class="post-subtitle">${escapeHtml(post.subtitle)}</p>` : ''}
-        <div class="devlog-tags" style="margin-top:0.75rem;">${post.tags.map((t) => `<span class="devlog-tag">${escapeHtml(t)}</span>`).join('')}</div>
+        <div class="devlog-meta">${escapeHtml(buildReadTime(post.body))}</div>
+        <div class="post-actions" aria-label="Article actions">
+          <button type="button" class="devlog-share" data-url="/devlog/${escapeAttribute(post.slug)}.html">Share</button>
+          <button type="button" class="post-print">Print / save PDF</button>
+        </div>
+        ${toc ? `${toc}\n        ` : ''}<div class="devlog-tags" style="margin-top:0.75rem;">${post.tags.map((t) => `<span class="devlog-tag">${escapeHtml(t)}</span>`).join('')}</div>
         <div class="devlog-tech" style="margin-top:0.75rem;">${post.technologies.map((t) => `<span class="devlog-tech-item">${escapeHtml(t)}</span>`).join('')}</div>
         ${body}
         ${seriesNav}
@@ -198,10 +206,12 @@ function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
   return pageShell({
     title: `${post.title} — Pages`,
     description: post.excerpt,
-    canonical: `https://ahmarius.github.io/pages/${post.pageSlug}/${post.slug}.html`,
+    canonical: `https://ahmarius.github.io/devlog/${post.slug}.html`,
     cssAssets: ['assets/css/style.css', 'assets/css/devlog.css', 'assets/css/pages.css', 'assets/css/katex.min.css'],
     activeNav: 'pages',
     depth: 1,
+    jsAssets: ['assets/js/hero-fluid.js', 'assets/js/script.js', 'assets/js/post.js'],
+    extraHead: postHeadExtras({ ...post, page: post.pageSlug }, { cover: post.cover }),
     content,
   });
 }

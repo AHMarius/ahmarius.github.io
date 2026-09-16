@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import { slugify, sanitizeFilename, isInsideRepo, resolveInside, ensureSafeRelative } from '../content/paths.mjs';
 import { buildPageHierarchy } from '../content/pages.mjs';
 import { writePost, readPost, deletePost, listPostsUnder } from '../content/posts.mjs';
+import { effectivePostStatus } from '../content/metadata.mjs';
 
 test('slugify various names', () => {
   assert.equal(slugify('Traffic Optimisation Platform'), 'traffic-optimisation-platform');
@@ -61,12 +62,17 @@ test('post write/read/delete + duplicate slugs', async () => {
   await fs.mkdir(postDir, { recursive: true });
   const file = path.join(postDir, 'hello.md');
 
-  await writePost(file, { title: 'Hello', slug: 'hello', body: 'Body', tags: ['a'], status: 'published' });
+  await writePost(file, {
+    title: 'Hello', slug: 'hello', body: 'Body', tags: ['a'], status: 'published',
+    publishAt: '2026-09-20', comments: false,
+  });
   const post = await readPost(file);
   assert.equal(post.title, 'Hello');
   assert.equal(post.slug, 'hello');
   assert.deepEqual(post.tags, ['a']);
   assert.equal(post.status, 'published');
+  assert.equal(post.publishAt, '2026-09-20');
+  assert.equal(post.comments, false);
   assert.equal(post.body, 'Body');
 
   const list = await listPostsUnder(path.dirname(path.dirname(file)).replace(/\/posts$/, ''));
@@ -74,6 +80,14 @@ test('post write/read/delete + duplicate slugs', async () => {
 
   await deletePost(file);
   await assert.rejects(fs.access(file));
+});
+
+test('scheduled posts become public only on or after their publish date', () => {
+  const before = Date.parse('2026-09-19T23:59:59Z');
+  const onDate = Date.parse('2026-09-20T00:00:00Z');
+  assert.equal(effectivePostStatus('published', '2026-09-20', before), 'draft');
+  assert.equal(effectivePostStatus('published', '2026-09-20', onDate), 'published');
+  assert.equal(effectivePostStatus('draft', '2026-09-20', onDate), 'draft');
 });
 
 test('compute page last-updated across hierarchy', async () => {

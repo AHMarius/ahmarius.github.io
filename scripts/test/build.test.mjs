@@ -65,6 +65,39 @@ test('publish mode hides drafts from the public devlog', async () => {
   await assert.rejects(fs.access(path.join(REPO, 'devlog', 'hidden-draft-secret.html')));
 });
 
+test('future scheduled posts stay out of both public post routes', async () => {
+  const scheduledFile = path.join(REPO, 'content', 'pages', 'test', 'posts', 'scheduled-build-test.md');
+  await fs.writeFile(scheduledFile, `---
+title: "ScheduledBuildSecret"
+slug: "scheduled-build-test"
+date: "2026-09-16"
+status: "published"
+publishAt: "2999-01-01"
+page: "test"
+---
+
+This content must not appear in a production build before its schedule.
+`, 'utf8');
+  try {
+    await runBuild({ mode: 'publish' });
+    const devlog = await fs.readFile(path.join(REPO, 'devlog.html'), 'utf8');
+    const pageHub = await fs.readFile(path.join(REPO, 'pages', 'test', 'index.html'), 'utf8');
+    const search = await fs.readFile(path.join(REPO, 'search-index.json'), 'utf8');
+    assert.doesNotMatch(devlog, /ScheduledBuildSecret/);
+    assert.doesNotMatch(pageHub, /ScheduledBuildSecret/);
+    assert.doesNotMatch(search, /ScheduledBuildSecret/);
+    await assert.rejects(fs.access(path.join(REPO, 'devlog', 'scheduled-build-test.html')));
+    await assert.rejects(fs.access(path.join(REPO, 'pages', 'test', 'scheduled-build-test.html')));
+
+    await runBuild({ mode: 'preview' });
+    await fs.access(path.join(REPO, 'devlog', 'scheduled-build-test.html'));
+    await fs.access(path.join(REPO, 'pages', 'test', 'scheduled-build-test.html'));
+  } finally {
+    await fs.rm(scheduledFile, { force: true });
+    await runBuild({ mode: 'publish' });
+  }
+});
+
 test('nested devlog pages reference working relative asset paths', async () => {
   await runBuild();
   const postHtml = await fs.readFile(path.join(REPO, 'devlog', 'first-solver.html'), 'utf8');
@@ -109,6 +142,9 @@ test('seriesNavHtml links posts sharing a series by part order', () => {
 
 test('publish build generates RSS feed, Atom feed, sitemap, and robots.txt', async () => {
   await runBuild({ mode: 'publish' });
+  await fs.access(path.join(REPO, 'dist', '.nojekyll'));
+  await assert.rejects(fs.access(path.join(REPO, 'dist', 'content')));
+  await assert.rejects(fs.access(path.join(REPO, 'dist', 'admin-app')));
   const feed = await fs.readFile(path.join(REPO, 'feed.xml'), 'utf8');
   assert.match(feed, /<rss version="2\.0"/);
   assert.match(feed, /<item>/);
@@ -152,10 +188,26 @@ test('post pages include OG/Twitter meta, JSON-LD, canonical, and search index e
   assert.match(postHtml, /property="og:title"/);
   assert.match(postHtml, /name="twitter:card" content="summary_large_image"/);
   assert.match(postHtml, /application\/ld\+json/);
+  const structuredData = [...postHtml.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
+  assert.ok(structuredData.length >= 2);
+  structuredData.forEach((match) => assert.doesNotThrow(() => JSON.parse(match[1])));
   assert.match(postHtml, /rel="canonical" href="https:\/\/ahmarius\.github\.io\/devlog\/first-solver\.html"/);
+  assert.match(postHtml, /type="application\/rss\+xml"/);
 
   const searchIndex = JSON.parse(await fs.readFile(path.join(REPO, 'search-index.json'), 'utf8'));
   assert.ok(searchIndex.some((e) => e.slug === 'first-solver' && e.url === '/devlog/first-solver.html'));
+  assert.ok(searchIndex.some((e) => e.kind === 'site' && e.slug === 'projects'));
+  assert.ok(searchIndex.some((e) => e.kind === 'page' && e.slug === 'fluid-dynamics'));
+  assert.match(postHtml, /class="post-actions"/);
+  assert.match(postHtml, /class="post-print"/);
+});
+
+test('page-hub article copies use the Devlog canonical and article tools', async () => {
+  await runBuild({ mode: 'publish' });
+  const html = await fs.readFile(path.join(REPO, 'pages', 'fluid-dynamics', 'first-solver.html'), 'utf8');
+  assert.match(html, /rel="canonical" href="https:\/\/ahmarius\.github\.io\/devlog\/first-solver\.html"/);
+  assert.match(html, /class="post-actions"/);
+  assert.match(html, /assets\/js\/post\.js/);
 });
 
 test('publish mode removes stale draft post pages from page hubs', async () => {

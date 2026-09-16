@@ -18,13 +18,24 @@ technologies:
   - Graphics
 tags:
   - Optimization
+publishAt: "2026-09-20"
+comments: true
 ---
 ```
 
 Only posts whose `status` is `published` are shown publicly (Devlog and Pages).
+When `publishAt` is a future date, the post remains private in production
+builds until that date. Because deployment is local, run **Publish** on or
+after the date to put the newly eligible post online. Set `comments: false` to
+disable the post's giscus thread.
+
+The post editor includes a live editorial panel for word count, reading time,
+metadata length, structure, tags, covers, and image alt text. Use
+**Ctrl/Cmd+Shift+K** to open the command palette from anywhere in Content
+Studio.
 
 The Admin App (in `admin-app/`) edits these files and publishes through the
-canonical build (`npm run build`) followed by `git add`/`git commit`/`git push`.
+canonical local build followed by a source push to `main` and a static snapshot push to `gh-pages`. GitHub Actions is not used.
 
 The legacy `admin/` browser app and the `content/devlog/` directory are kept
 only as a compatibility shim for older content; new posts should always be

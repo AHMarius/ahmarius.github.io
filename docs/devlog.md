@@ -14,6 +14,8 @@ content/pages/<page-slug>/posts/<post-slug>.md
   `/devlog/`.
 - Individual posts are generated into `devlog/<slug>.html`.
 - Draft/unpublished posts never appear in the public Devlog.
+- Future-dated `publishAt` posts remain private in both Devlog and Page-hub
+  output until their date.
 - Styling is shared with the portfolio using `assets/css/style.css` and
   `assets/css/devlog.css`.
 - Filters are powered by `assets/js/devlog.js`.

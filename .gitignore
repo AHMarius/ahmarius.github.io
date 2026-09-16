@@ -19,3 +19,6 @@ games/justdrive/cmake_install.cmake
 _site/
 .bundle/
 vendor/
+
+# Local Content Studio executable; rebuild it from admin-app/src-tauri.
+bin/ahmarius-content-studio

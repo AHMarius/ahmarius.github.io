@@ -92,16 +92,14 @@ input as a command; the only processes it runs are fixed tool invocations
 - Recovery data is plain text Markdown; treat the config dir as private to the
   current OS user.
 
-## GitHub Actions (`.github/workflows/publish.yml`)
+## Publishing
 
-- Runs with default (read-only) permissions on `push` to `main` and on a
-  schedule.
-- Uses the built-in `GITHUB_TOKEN` with the minimum `contents` permission
-  needed for `actions/deploy-pages`; the job is read-only for the repo except
-  the Pages deployment artifact.
-- Steps: `npm ci` → `npm run lint` → `npm test` → publish-mode build →
-  `check-leaks` → deploy. The workflow never uploads secrets and never logs
-  repository contents.
+GitHub Actions is not used. Content Studio builds and validates locally, pushes
+canonical source to `main`, and pushes only the sanitized `dist/` snapshot
+to `gh-pages`. Deployment uses a disposable clone so it cannot switch, clean,
+or overwrite the source checkout. The publish command rejects non-fast-forward
+updates to `main`, unexpected private paths in `dist/`, and symlinks in the
+public snapshot.
 
 ## Threat model / non-goals
 

@@ -1,0 +1,6 @@
+/src/main/java/io/github/ahmarius/content_studio/generated
+/src/main/jniLibs/**/*.so
+/src/main/assets/tauri.conf.json
+/tauri.build.gradle.kts
+/proguard-tauri.pro
+/tauri.properties

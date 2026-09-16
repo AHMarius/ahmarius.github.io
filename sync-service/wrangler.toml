@@ -1,0 +1,15 @@
+name = "ahmarius-content-sync"
+main = "worker.js"
+compatibility_date = "2026-09-16"
+
+# Create with: npx wrangler kv namespace create SYNC_STATE
+# Then replace this placeholder with the returned namespace id.
+[[kv_namespaces]]
+binding = "SYNC_STATE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+GITHUB_REPOSITORY = "AHMarius/ahmarius.github.io"
+GITHUB_BRANCH = "main"
+# Comma-separated WebView origins. Do not use * in production.
+ALLOWED_ORIGINS = "https://tauri.localhost,http://tauri.localhost"
