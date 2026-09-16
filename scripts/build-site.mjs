@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { buildDevlog, parseMode, copyDistTree } from './build-devlog.mjs';
 import { buildPages } from './build-pages.mjs';
+import { buildProjects } from './projects-db.mjs';
 
 const ROOT = process.cwd();
 const KATEX_SOURCE = path.join(ROOT, 'node_modules', 'katex', 'dist', 'katex.min.css');
@@ -22,10 +23,11 @@ async function buildSite(mode = runMode) {
   await copyKatexAssets();
   const devlogResult = await buildDevlog({ copyDist: false, mode });
   const pagesResult = await buildPages({ mode });
+  const projectsResult = await buildProjects();
   // Publish builds are the deployable snapshot; copy the tree once both
   // sub-builds have written their output so dist/ is complete.
   if (mode === 'publish') await copyDistTree();
-  return { devlogResult, pagesResult };
+  return { devlogResult, pagesResult, projectsResult };
 }
 
 async function main() {

@@ -6,6 +6,8 @@
     "build": "node scripts/build-site.mjs",
     "dev": "node scripts/serve.mjs",
     "preview": "node scripts/serve.mjs",
+    "projects:migrate": "node scripts/projects-db.mjs migrate",
+    "projects:build": "node scripts/projects-db.mjs build",
     "lint": "node scripts/lint.mjs",
     "test": "node scripts/lint.mjs && node --test scripts/test/"
   },

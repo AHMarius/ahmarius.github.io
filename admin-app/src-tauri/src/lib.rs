@@ -7,6 +7,7 @@ pub mod git;
 pub mod import;
 pub mod lint;
 pub mod process;
+pub mod projects_db;
 pub mod syndication;
 
 // Auto-build version: derived from the repo state at build time (build.rs).
@@ -502,6 +503,19 @@ fn list_projects(app: tauri::AppHandle) -> Result<Vec<content::ProjectRow>, AppE
 }
 
 #[tauri::command]
+fn list_portfolio_projects(app: tauri::AppHandle) -> Result<Vec<projects_db::PortfolioProject>, AppError> {
+    with_repo(&app, None, |repo| projects_db::list(repo))
+}
+
+#[tauri::command]
+fn read_portfolio_project(
+    app: tauri::AppHandle,
+    slug: String,
+) -> Result<projects_db::PortfolioProject, AppError> {
+    with_repo(&app, None, |repo| projects_db::read(repo, &slug))
+}
+
+#[tauri::command]
 fn read_project(
     app: tauri::AppHandle,
     slug: String,
@@ -919,6 +933,7 @@ pub fn run() {
                         let _ = window.set_position(tauri::LogicalPosition::new(x, y));
                     }
                 }
+                #[cfg(desktop)]
                 if ws.maximized {
                     if let Some(w) = app.get_webview_window("main") {
                         let _ = w.maximize();
@@ -983,6 +998,8 @@ pub fn run() {
             update_page,
             delete_page,
             list_projects,
+            list_portfolio_projects,
+            read_portfolio_project,
             read_project,
             create_project,
             update_project,

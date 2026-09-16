@@ -19,6 +19,7 @@ const state = {
   tree: [] as ContentNode[],
   posts: [] as any[],
   projects: [] as any[],
+  portfolioProjects: [] as any[],
   prefs: {} as any,
   editor: null as Editor | null,
   editorSave: undefined as (() => Promise<boolean>) | undefined,
@@ -95,6 +96,28 @@ async function call(cmd: string, args?: any): Promise<any> {
     invokeImpl = (await import("@tauri-apps/api/core")).invoke as InvokeFn;
   }
   return invokeImpl(cmd, args);
+}
+
+async function loadPortfolioProjects(): Promise<any[]> {
+  try {
+    return (await call("list_portfolio_projects")) || [];
+  } catch {
+    const response = await fetch("/projects.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("Could not load the bundled projects database snapshot.");
+    const projects = await response.json();
+    return Array.isArray(projects) ? projects : [];
+  }
+}
+
+async function loadPortfolioProject(slug: string): Promise<any> {
+  try {
+    return await call("read_portfolio_project", { slug });
+  } catch {
+    if (!state.portfolioProjects.length) state.portfolioProjects = await loadPortfolioProjects();
+    const project = state.portfolioProjects.find((item: any) => item.slug === slug);
+    if (!project) throw new Error(`Portfolio project not found: ${slug}`);
+    return project;
+  }
 }
 
 const cell = (fn: () => Promise<any>) => fn().catch((e) => {
@@ -713,6 +736,28 @@ function showProjectsView() {
   v.appendChild(addBtn);
 
   cell(async () => {
+    const portfolioProjects = await loadPortfolioProjects();
+    state.portfolioProjects = portfolioProjects;
+    const portfolioHeading = el("h2", "section-title", "Portfolio projects (database)");
+    v.appendChild(portfolioHeading);
+    const portfolioGrid = el("div", "cards-grid portfolio-project-grid");
+    portfolioProjects.forEach((p: any) => {
+      const card = el("article", "card page-card-c");
+      card.innerHTML = `
+        <div class="card-head"><span class="card-avatar"></span><h3>${esc(p.name)}${statusPill(String(p.status || "").toLowerCase())}</h3></div>
+        <p class="muted small">${esc(p.date_label || "")} · ${(p.tags || []).map((tag: string) => esc(tag)).join(" · ")}</p>
+        <p class="card-desc">${esc(p.description || "")}</p>
+        <div class="card-actions"><button data-open-portfolio-project="${esc(p.slug)}" class="btn">Open database record</button></div>`;
+      portfolioGrid.appendChild(card);
+    });
+    v.appendChild(portfolioGrid);
+    portfolioGrid.querySelectorAll("[data-open-portfolio-project]").forEach((button) =>
+      button.addEventListener("click", () =>
+        showPortfolioProject((button as HTMLElement).dataset["open-portfolio-project"]!),
+      ),
+    );
+
+    v.appendChild(el("h2", "section-title", "Devlog project groups"));
     const projects = await refreshProjects();
     const grid = el("div", "cards-grid");
     state.projects.forEach((p: any) => {
@@ -778,6 +823,50 @@ function showProjectsView() {
         }
       }),
     );
+  });
+}
+
+function showPortfolioProject(slug: string) {
+  resetEditorState();
+  state.view = { kind: "page", slug };
+  const v = viewContent();
+  v.innerHTML = "";
+  cell(async () => {
+    const project = await loadPortfolioProject(slug);
+    if (!project) return;
+    const back = el("button", "btn", "← All projects");
+    back.addEventListener("click", showProjectsView);
+    v.appendChild(back);
+    const preview = el("div", "portfolio-database-preview");
+    // article_html comes from the repository-owned SQLite catalog. Rendering
+    // the lossless record keeps long descriptions and feature lists intact.
+    preview.innerHTML = project.article_html;
+    v.appendChild(preview);
+    preview.querySelectorAll(".link-btn[data-url]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const url = (button as HTMLElement).dataset["url"];
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+      });
+    });
+    const folder = String(project.gallery_folder || "");
+    const gallery = preview.querySelector("[data-gallery]") as HTMLElement | null;
+    if (folder && gallery) {
+      try {
+        const manifestUrl = String(await call("read_repo_file", { relPath: `${folder}/manifest.json` }));
+        const encoded = manifestUrl.split(",", 2)[1] || "";
+        const files = JSON.parse(atob(encoded));
+        gallery.innerHTML = "";
+        for (const file of files) {
+          const src = await call("read_repo_file", { relPath: `${folder}/${file}` });
+          const image = document.createElement("img");
+          image.src = String(src);
+          image.alt = `${project.name} screenshot`;
+          gallery.appendChild(image);
+        }
+      } catch {
+        gallery.textContent = "Gallery unavailable.";
+      }
+    }
   });
 }
 
