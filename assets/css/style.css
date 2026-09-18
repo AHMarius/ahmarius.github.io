@@ -361,10 +361,15 @@ nav {
 
 .primary-btn,
 .secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 13px 28px;
   border-radius: 40px;
   font-size: 0.9rem;
   font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
   cursor: pointer;
   transition:
     transform var(--transition-fast),
@@ -962,7 +967,7 @@ nav {
 }
 
 .project-card:hover,
-.project-card:focus-within {
+.project-card.keyboard-open {
   max-height: 2600px;
 
   background: var(--color-card-bg-hover);
@@ -975,7 +980,7 @@ nav {
 }
 
 .project-card:hover::after,
-.project-card:focus-within::after {
+.project-card.keyboard-open::after {
   opacity: 0;
 }
 
@@ -1508,6 +1513,11 @@ footer {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+
+body.cv-modal-open,
+body.search-modal-open {
+  overflow: hidden;
 }
 
 .cv-modal {
@@ -2160,7 +2170,8 @@ footer {
     gap: 10px;
   }
 
-  .hero-buttons button {
+  .hero-buttons button,
+  .hero-buttons a {
     width: 100%;
   }
 

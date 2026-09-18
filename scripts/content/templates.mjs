@@ -57,7 +57,7 @@ export function pageShell(opts = {}) {
     <nav class="topnav">
       <div class="topnav-inner">
         <span class="site-logo">DIGITAL CV</span>
-        <button id="hamburger-btn" class="hamburger-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobile-menu">
+        <button id="hamburger-btn" class="hamburger-btn" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobile-menu">
           <span class="hamburger-bar"></span>
           <span class="hamburger-bar"></span>
           <span class="hamburger-bar"></span>

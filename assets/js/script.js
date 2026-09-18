@@ -1,21 +1,29 @@
 document.addEventListener("DOMContentLoaded", () => {
-  initNavigation();
-  initHamburgerMenu();
-  initThemeToggle();
-  initLinkButtons();
-  initGalleries();
-  initProjectAvatars();
-  initGitHubStats();
-  initReducedMotionVideo();
-  initActivePage();
-  initProjectKeyboardControls();
-  initProjectFilters();
-  initCvAccessibility();
-  initCopyEmail();
-  initBackToTop();
-  initScrollProgress();
-  initRevealOnScroll();
-  initSiteSearch();
+  [
+    initNavigation,
+    initHamburgerMenu,
+    initThemeToggle,
+    initLinkButtons,
+    initGalleries,
+    initProjectAvatars,
+    initGitHubStats,
+    initReducedMotionVideo,
+    initActivePage,
+    initProjectKeyboardControls,
+    initProjectFilters,
+    initCvAccessibility,
+    initCopyEmail,
+    initBackToTop,
+    initScrollProgress,
+    initRevealOnScroll,
+    initSiteSearch,
+  ].forEach((initialize) => {
+    try {
+      initialize();
+    } catch (error) {
+      console.error(`Could not initialize ${initialize.name}:`, error);
+    }
+  });
 });
 
 /* ------------------------------------------------------------------------
@@ -48,7 +56,13 @@ function initReducedMotionVideo() {
  * ------------------------------------------------------------------------ */
 
 function initThemeToggle() {
-  const storedTheme = localStorage.getItem("theme");
+  let storedTheme = null;
+  try {
+    storedTheme = localStorage.getItem("theme");
+  } catch {
+    // Storage can be unavailable in strict privacy contexts. The control
+    // should still work for the lifetime of the current page.
+  }
   const theme = storedTheme === "dark" ? "dark" : "light";
 
   document.documentElement.dataset.theme = theme;
@@ -78,7 +92,9 @@ function initThemeToggle() {
       document.documentElement.dataset.theme === "dark" ? "light" : "dark";
 
     document.documentElement.dataset.theme = nextTheme;
-    localStorage.setItem("theme", nextTheme);
+    try {
+      localStorage.setItem("theme", nextTheme);
+    } catch {}
     updateButton(nextTheme);
   });
 }
@@ -122,6 +138,15 @@ function initHamburgerMenu() {
     btn.classList.toggle("is-open", !open);
   });
 
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !menu.hidden) {
+      menu.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      btn.classList.remove("is-open");
+      btn.focus();
+    }
+  });
+
   menu.addEventListener("click", (e) => {
     if (e.target.tagName === "A") {
       menu.hidden = true;
@@ -137,6 +162,7 @@ function initHamburgerMenu() {
 
 function initLinkButtons() {
   document.querySelectorAll(".link-btn[data-url]").forEach((btn) => {
+    btn.type = "button";
     btn.addEventListener("click", () => {
       const url = btn.dataset.url;
       if (url) {
@@ -418,27 +444,20 @@ async function initGitHubStats() {
   const countEl = document.getElementById("github-repo-count");
   const statusEl = document.getElementById("github-repo-status");
 
-  console.log("countEl:", countEl);
-  console.log("statusEl:", statusEl);
-
-  if (!countEl || !statusEl) {
-    console.error("Elements not found.");
-    return;
-  }
+  if (!countEl || !statusEl) return;
 
   try {
     const res = await fetch("https://api.github.com/users/ahmarius");
-    console.log("Status:", res.status);
+    if (!res.ok) throw new Error(`GitHub returned ${res.status}`);
 
     const data = await res.json();
-    console.log("Response:", data);
-    console.log("public_repos:", data.public_repos);
+    if (!Number.isFinite(data.public_repos)) {
+      throw new Error("GitHub response did not include a repository count");
+    }
 
     countEl.textContent = data.public_repos;
     statusEl.textContent = "live from GitHub";
-  } catch (err) {
-    console.error("GitHub error:", err);
-
+  } catch {
     countEl.textContent = "20+";
     statusEl.textContent = "cached";
   }
@@ -492,16 +511,25 @@ function initActivePage() {
 function initProjectKeyboardControls() {
   document.querySelectorAll(".project-card").forEach((card) => {
     card.setAttribute("tabindex", "0");
-    card.setAttribute("role", "button");
     card.setAttribute("aria-expanded", "false");
 
     const title = card.querySelector(".project-title");
     if (title) {
       card.setAttribute(
         "aria-label",
-        `Expand project: ${title.textContent.trim()}`,
+        `Project: ${title.textContent.trim()}. Press Enter or Space to expand.`,
       );
     }
+
+    const toggle = () => {
+      const open = card.classList.toggle("keyboard-open");
+      card.setAttribute("aria-expanded", String(open));
+    };
+
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("a, button, input, select, textarea")) return;
+      toggle();
+    });
 
     card.addEventListener("keydown", (event) => {
       if (event.target !== card) return;
@@ -509,8 +537,7 @@ function initProjectKeyboardControls() {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
 
-        const open = card.classList.toggle("keyboard-open");
-        card.setAttribute("aria-expanded", String(open));
+        toggle();
       }
     });
   });
@@ -660,20 +687,30 @@ function initCopyEmail() {
     const originalLabel = btn.textContent;
 
     btn.addEventListener("click", async () => {
+      let copied = false;
       try {
         await navigator.clipboard.writeText(email);
+        copied = true;
       } catch {
         /* Clipboard API unavailable — fall back to a temporary input */
         const temp = document.createElement("input");
         temp.value = email;
-        document.body.appendChild(temp);
-        temp.select();
-        document.execCommand("copy");
-        document.body.removeChild(temp);
+        temp.setAttribute("readonly", "");
+        temp.style.position = "fixed";
+        temp.style.opacity = "0";
+        try {
+          document.body.appendChild(temp);
+          temp.select();
+          copied = typeof document.execCommand === "function" && document.execCommand("copy");
+        } catch {
+          copied = false;
+        } finally {
+          temp.remove();
+        }
       }
 
-      btn.textContent = "Copied!";
-      btn.classList.add("is-copied");
+      btn.textContent = copied ? "Copied!" : "Copy failed";
+      btn.classList.toggle("is-copied", copied);
 
       window.clearTimeout(btn._copyResetTimer);
       btn._copyResetTimer = window.setTimeout(() => {
@@ -846,13 +883,16 @@ function initSiteSearch() {
   let index = null;
   let visibleHits = [];
   let activeHit = -1;
+  let previousFocus = null;
   const indexUrl = button.dataset.indexUrl || "search-index.json";
 
   async function loadIndex() {
     if (index) return index;
     try {
       const res = await fetch(indexUrl);
-      index = await res.json();
+      if (!res.ok) throw new Error(`Search index returned ${res.status}`);
+      const data = await res.json();
+      index = Array.isArray(data) ? data : [];
     } catch {
       index = [];
     }
@@ -860,7 +900,10 @@ function initSiteSearch() {
   }
 
   function open() {
+    if (!overlay.hidden) return;
+    previousFocus = document.activeElement;
     overlay.hidden = false;
+    document.body.classList.add("search-modal-open");
     button.setAttribute("aria-expanded", "true");
     input.value = "";
     results.innerHTML = '<p class="search-hint">Type to search posts, tags, and projects.</p>';
@@ -870,8 +913,11 @@ function initSiteSearch() {
   }
 
   function close() {
+    if (overlay.hidden) return;
     overlay.hidden = true;
+    document.body.classList.remove("search-modal-open");
     button.setAttribute("aria-expanded", "false");
+    if (previousFocus instanceof HTMLElement) previousFocus.focus();
   }
 
   function match(entry, term) {
@@ -904,7 +950,7 @@ function initSiteSearch() {
     }
     results.innerHTML = hits
       .map(
-        (e, index) => `<a href="${e.url}" class="search-result${index === activeHit ? " is-active" : ""}" role="option" aria-selected="${index === activeHit}" data-search-hit="${index}">
+        (e, index) => `<a href="${escapeHtml(e.url || "#")}" class="search-result${index === activeHit ? " is-active" : ""}" role="option" aria-selected="${index === activeHit}" data-search-hit="${index}">
           <span class="search-result-heading"><span class="search-kind">${escapeHtml(e.kind || "post")}</span><span class="search-result-title">${escapeHtml(e.title)}</span></span>
           <span class="search-result-excerpt">${escapeHtml(e.excerpt || "")}</span>
           <span class="search-result-meta">${escapeHtml(e.page || "")}${e.date ? " · " + escapeHtml(e.date) : ""}${e.project ? " · " + escapeHtml(e.project) : ""}</span>
@@ -918,7 +964,28 @@ function initSiteSearch() {
   }
 
   button.addEventListener("click", open);
-  closeBtn.addEventListener("click", close);
+  closeBtn?.addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(
+      overlay.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
   input.addEventListener("input", () => render(input.value.trim().toLowerCase()));
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") close();

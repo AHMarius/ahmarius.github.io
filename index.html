@@ -311,13 +311,14 @@
         <li><a href="projects.html">Projects</a></li>
         <li><a href="games.html">Games</a></li>
         <li><a href="devlog.html">Devlog</a></li>
-        <li><a href="cv.pdf">CV</a></li>
+        <li><a href="#cvModal" id="navCvLink">CV</a></li>
         <li><a href="about.html">About</a></li>
       </ul>
 
       <button
         class="hamburger"
         id="navToggle"
+        type="button"
         aria-label="Toggle menu"
         aria-expanded="false"
         aria-controls="navLinks"
@@ -355,24 +356,20 @@
           </p>
 
           <div class="hero-buttons">
-            <button
-              class="secondary-btn"
-              type="button"
-              onclick="location.href='games.html'"
-            >
+            <a class="secondary-btn" href="games.html">
               Play Games
-            </button>
+            </a>
 
-            <button class="primary-btn" onclick="location.href='projects.html'">
+            <a class="primary-btn" href="projects.html">
               Explore Projects
-            </button>
+            </a>
 
-            <button class="secondary-btn" onclick="location.href='about.html'">
+            <a class="secondary-btn" href="about.html">
               About Me
-            </button>
+            </a>
 
             <button class="secondary-btn" id="downloadCvBtn" type="button">
-              Download CV
+              Request CV
             </button>
           </div>
         </div>
@@ -478,9 +475,19 @@
         });
       });
 
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && navLinks.classList.contains("active")) {
+          navLinks.classList.remove("active");
+          navToggle.classList.remove("is-open");
+          navToggle.setAttribute("aria-expanded", "false");
+          navToggle.focus();
+        }
+      });
+
       /* ===== CV REQUEST MODAL ===== */
 
       const downloadCvBtn = document.getElementById("downloadCvBtn");
+      const navCvLink = document.getElementById("navCvLink");
       const cvModal = document.getElementById("cvModal");
       const cvModalClose = document.getElementById("cvModalClose");
       const cvModalCancel = document.getElementById("cvModalCancel");
@@ -489,8 +496,13 @@
       const cvModalError = document.getElementById("cvModalError");
 
       const cvRecipient = "hritcualex862@gmail.com";
+      let cvModalTrigger = null;
 
-      function openCvModal() {
+      function openCvModal(event) {
+        event?.preventDefault();
+        if (cvModal.classList.contains("active")) return;
+
+        cvModalTrigger = event?.currentTarget || document.activeElement;
         cvModal.classList.add("active");
         cvModal.setAttribute("aria-hidden", "false");
 
@@ -501,14 +513,20 @@
         }, 100);
       }
 
-      function closeCvModal() {
+      function closeCvModal({ restoreFocus = true } = {}) {
+        if (!cvModal.classList.contains("active")) return;
+
         cvModal.classList.remove("active");
         cvModal.setAttribute("aria-hidden", "true");
 
         cvModalError.textContent = "";
+        if (restoreFocus && cvModalTrigger instanceof HTMLElement) {
+          cvModalTrigger.focus();
+        }
       }
 
       downloadCvBtn.addEventListener("click", openCvModal);
+      navCvLink.addEventListener("click", openCvModal);
 
       cvModalClose.addEventListener("click", closeCvModal);
 
@@ -564,43 +582,10 @@
          */
         window.location.href = `mailto:${cvRecipient}?subject=${subject}&body=${body}`;
 
-        closeCvModal();
+        closeCvModal({ restoreFocus: false });
       });
 
-      /* ===== THEME AND INTERACTIVE HERO ===== */
-
-      const storedTheme = localStorage.getItem("theme");
-      const initialTheme = storedTheme === "dark" ? "dark" : "light";
-      document.documentElement.dataset.theme = initialTheme;
-
-      const themeToggle = document.createElement("button");
-      themeToggle.type = "button";
-      themeToggle.className = "theme-toggle";
-      document.body.appendChild(themeToggle);
-
-      function updateThemeToggle(theme) {
-        const isDark = theme === "dark";
-        themeToggle.textContent = isDark ? "☀" : "☾";
-        themeToggle.title = isDark
-          ? "Switch to light theme"
-          : "Switch to dark theme";
-        themeToggle.setAttribute(
-          "aria-label",
-          isDark ? "Switch to light theme" : "Switch to dark theme",
-        );
-        themeToggle.setAttribute("aria-pressed", String(isDark));
-      }
-
-      updateThemeToggle(initialTheme);
-
-      themeToggle.addEventListener("click", () => {
-        const nextTheme =
-          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-
-        document.documentElement.dataset.theme = nextTheme;
-        localStorage.setItem("theme", nextTheme);
-        updateThemeToggle(nextTheme);
-      });
+      /* ===== INTERACTIVE HERO ===== */
 
       const interactiveHero = document.querySelector(".interactive-hero");
       const reducedMotion = window.matchMedia(

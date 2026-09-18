@@ -106,20 +106,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   const progress = document.querySelector(".reading-progress span");
-  const backToTop = document.createElement("button");
-  backToTop.className = "back-to-top";
-  backToTop.type = "button";
-  backToTop.setAttribute("aria-label", "Back to top");
-  backToTop.textContent = "↑";
-  backToTop.hidden = true;
-  document.body.appendChild(backToTop);
 
   let ticking = false;
   const updateReadingPosition = () => {
     const max = document.documentElement.scrollHeight - window.innerHeight;
     const ratio = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
     if (progress) progress.style.width = `${ratio * 100}%`;
-    backToTop.hidden = window.scrollY < Math.min(500, window.innerHeight * 0.7);
     ticking = false;
   };
   window.addEventListener("scroll", () => {
@@ -128,6 +120,5 @@ document.addEventListener("DOMContentLoaded", () => {
       ticking = true;
     }
   }, { passive: true });
-  backToTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   updateReadingPosition();
 });

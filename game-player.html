@@ -10,6 +10,7 @@
     <title>Game Player — Alexandru-Marius Hrițcu</title>
     <link rel="stylesheet" href="assets/css/style.css" />
     <script defer src="assets/js/hero-fluid.js"></script>
+    <script defer src="assets/js/script.js"></script>
   </head>
 
   <body>
@@ -27,6 +28,7 @@
           aria-label="Toggle menu"
           class="hamburger-btn"
           id="hamburger-btn"
+          type="button"
         >
           <span class="hamburger-bar"></span>
           <span class="hamburger-bar"></span>
@@ -147,32 +149,6 @@
 
       stage.appendChild(frame);
 
-      /*
-       * Keep the game-player page self-contained.
-       * assets/js/script.js contains site-wide hooks for elements that do not exist on
-       * this page, which produced the countEl/statusEl "null" console errors.
-       */
-      const hamburger = document.getElementById("hamburger-btn");
-      const mobileMenu = document.getElementById("mobile-menu");
-
-      hamburger.addEventListener("click", () => {
-        const isOpen = hamburger.classList.toggle("is-open");
-        hamburger.setAttribute("aria-expanded", String(isOpen));
-
-        if (isOpen) {
-          mobileMenu.removeAttribute("hidden");
-        } else {
-          mobileMenu.setAttribute("hidden", "");
-        }
-      });
-
-      mobileMenu.addEventListener("click", (event) => {
-        if (event.target.closest("a")) {
-          hamburger.classList.remove("is-open");
-          hamburger.setAttribute("aria-expanded", "false");
-          mobileMenu.setAttribute("hidden", "");
-        }
-      });
     </script>
   </body>
 </html>

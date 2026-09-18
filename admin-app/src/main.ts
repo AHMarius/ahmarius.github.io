@@ -28,6 +28,7 @@ const state = {
   editorDirty: false,
   status: "Idle" as string,
   saving: false as boolean,
+  previewing: false as boolean,
   editorKey: "" as string,
   autosaveTimer: 0 as any,
   collapsed: new Set<string>(),
@@ -72,6 +73,25 @@ function setStatus(text: string) {
   state.editor?.setStatus(state.editorDirty ? "Unsaved changes" : text);
 }
 
+/** Keep the persistent post actions honest. They used to retain the previous
+ * editor's click handlers, which made Save/Preview appear clickable on every
+ * other screen while doing nothing. */
+function syncPostActions() {
+  const active = editorActive();
+  const save = $("#save-btn") as HTMLButtonElement | null;
+  const preview = $("#preview-btn") as HTMLButtonElement | null;
+  if (save) {
+    save.disabled = !active || state.saving || state.previewing;
+    save.textContent = state.saving && active ? "Saving…" : "Save Draft";
+    save.title = active ? "Save this post (Ctrl+S)" : "Open a post to save it";
+  }
+  if (preview) {
+    preview.disabled = !active || state.saving || state.previewing;
+    preview.textContent = state.previewing && active ? "Building…" : "Preview";
+    preview.title = active ? "Save and build a site preview" : "Open a post to build a preview";
+  }
+}
+
 /** True while the post editor is on screen and usable (not a stale closure
  * left behind after navigating away). */
 function editorActive(): boolean {
@@ -82,6 +102,7 @@ function editorActive(): boolean {
  * / preview / Ctrl+S can't invoke a stale save closure against removed DOM. */
 function resetEditorState() {
   resetSyncFileEditor();
+  state.editor?.destroy();
   state.editor = null;
   state.editorSave = undefined;
   state.editorOriginalSlug = "";
@@ -93,6 +114,11 @@ function resetEditorState() {
     state.autosaveTimer = 0;
   }
   newPostSessionId = "";
+  const save = $("#save-btn") as HTMLButtonElement | null;
+  const preview = $("#preview-btn") as HTMLButtonElement | null;
+  if (save) save.onclick = null;
+  if (preview) preview.onclick = null;
+  syncPostActions();
 }
 
 function confirmLeaveEditor(): boolean {
@@ -165,17 +191,9 @@ async function renderSignIn(host: HTMLElement, onDone: () => void) {
   stopGhListeners();
   ghOnDone = onDone;
   host.className = "auth-status loading";
-  host.innerHTML = `<p class="muted">Starting GitHub sign-in… keep this window open.</p>`;
-  try {
-    await call("github_login");
-  } catch (e) {
-    host.className = "auth-status error";
-    host.innerHTML = `<p class="error-text">Could not start GitHub sign-in: ${esc(String((e as any).message || e))}</p>`;
-    return;
-  }
   host.innerHTML = `
     <div class="gh-login">
-      <p class="auth-desc muted">Complete the sign-in in the browser window that opens:</p>
+      <p class="auth-desc muted">Starting GitHub sign-in… keep this window open.</p>
       <div class="gh-code muted">Waiting for one-time code…</div>
       <p class="gh-url"><a href="https://github.com/login/device" target="_blank" rel="noopener">https://github.com/login/device</a></p>
       <p class="muted gh-hint">Waiting for authentication…</p>
@@ -185,8 +203,9 @@ async function renderSignIn(host: HTMLElement, onDone: () => void) {
   const link = host.querySelector<HTMLAnchorElement>(".gh-url a")!;
   const hint = host.querySelector<HTMLElement>(".gh-hint")!;
 
-  ghListeners.push(
-    await listen("github-login-code", (e: any) => {
+  try {
+    ghListeners.push(
+      await listen("github-login-code", (e: any) => {
       const p = e.payload || {};
       if (p.code) {
         codeBox.textContent = p.code;
@@ -198,19 +217,19 @@ async function renderSignIn(host: HTMLElement, onDone: () => void) {
         link.href = p.url;
         link.textContent = p.url;
       }
-    }),
-  );
-  ghListeners.push(
-    await listen("github-login-url", (e: any) => {
+      }),
+    );
+    ghListeners.push(
+      await listen("github-login-url", (e: any) => {
       const url = e?.payload?.url;
       if (url && link) {
         link.href = url;
         link.textContent = url;
       }
-    }),
-  );
-  ghListeners.push(
-    await listen("github-login-done", async (e: any) => {
+      }),
+    );
+    ghListeners.push(
+      await listen("github-login-done", async (e: any) => {
       const p = e.payload || {};
       if (p.ok) {
         host.className = "auth-status ok";
@@ -224,15 +243,23 @@ async function renderSignIn(host: HTMLElement, onDone: () => void) {
         host.innerHTML = `<p class="error-text">GitHub sign-in was cancelled or failed. Try again.</p>`;
         stopGhListeners();
       }
-    }),
-  );
-  ghListeners.push(
-    await listen("github-login-error", (e: any) => {
+      }),
+    );
+    ghListeners.push(
+      await listen("github-login-error", (e: any) => {
       host.className = "auth-status error";
       host.innerHTML = `<p class="error-text">${esc(String(e?.payload || "GitHub sign-in error"))}</p>`;
       stopGhListeners();
-    }),
-  );
+      }),
+    );
+    // Register every event listener before starting the background process;
+    // fast failures and the one-time code can otherwise be emitted too early.
+    await call("github_login");
+  } catch (e) {
+    stopGhListeners();
+    host.className = "auth-status error";
+    host.innerHTML = `<p class="error-text">Could not start GitHub sign-in: ${esc(String((e as any).message || e))}</p>`;
+  }
 }
 
 // ---------- Autosave + crash recovery ----------
@@ -307,6 +334,7 @@ async function checkRecovery(page: string, slug: string) {
   // Only offer recovery if it differs from what's on disk.
   const content = typeof saved === "string" ? saved : saved?.content;
   if (typeof content !== "string") return;
+  if (state.editorKey !== key || !editorActive()) return;
   if (state.editor && content === state.editor.getValue()) return;
   const host = $("#pe-recovery");
   if (!host) return;
@@ -337,12 +365,7 @@ async function checkRecovery(page: string, slug: string) {
 async function boot() {
   const prefs = await cell(() => call("get_prefs"));
   state.prefs = prefs || {};
-  if (prefs?.theme) {
-    document.documentElement.dataset.theme = prefs.theme;
-  } else if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
-    document.documentElement.dataset.theme = "dark";
-  }
-  applyThemeToggle(document.documentElement.dataset.theme || "dark");
+  applyThemeToggle(prefs?.theme || "system");
   await refreshTree();
   // Best-effort auto-connect: register the gh credential helper so future
   // `git push` over HTTPS picks up the stored GitHub token.
@@ -384,8 +407,8 @@ app.innerHTML = `
       </nav>
       <div class="topbar-right">
         <span id="topbar-status" class="status-pill">Idle</span>
-        <button id="preview-btn" class="btn">Preview</button>
-        <button id="save-btn" class="btn primary">Save Draft</button>
+        <button id="preview-btn" class="btn" disabled title="Open a post to build a preview">Preview</button>
+        <button id="save-btn" class="btn primary" disabled title="Open a post to save it">Save Draft</button>
         <button id="publish-btn" class="btn publish">Publish</button>
         <button id="settings-btn" class="btn ghost" title="Settings">⚙</button>
         <button id="command-btn" class="btn ghost" title="Command palette (Ctrl+Shift+K)">⌘</button>
@@ -691,7 +714,7 @@ function showDashboard() {
           : '<div class="empty-state compact"><h3>No deleted items</h3><p>Deleted content stays here until you empty the trash.</p></div>'
         }</div>${trash.length ? '<div class="card-actions dashboard-trash-actions"><button id="dash-empty-trash" class="btn danger">Empty trash</button></div>' : ""}
       </section>`;
-    $("#dash-new-post", v)!.addEventListener("click", () => openPostEditor(promptPageForPost(), null));
+    $("#dash-new-post", v)!.addEventListener("click", startNewPost);
     $("#dash-all-posts", v)!.addEventListener("click", showAllPostsView);
     $("#dash-publish", v)!.addEventListener("click", openPublish);
     $("#dash-recovery", v)?.addEventListener("click", openRecoveryDashboard);
@@ -779,27 +802,28 @@ function wireCoverField(
   input.addEventListener("input", () => void showCoverPreview(input, preview));
   scope.querySelectorAll("[data-pick-cover]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const picked = await cell(() =>
-        call("pick_file", {
+      const button = btn as HTMLButtonElement;
+      button.disabled = true;
+      try {
+        const picked = await call("pick_file", {
           filterName: "Images",
           filterExts: ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"],
-        }),
-      );
-      if (!picked) return;
-      try {
+        });
+        if (!picked) return;
         const target = resolveTarget();
-        const res: any = await cell(() =>
-          call("import_cover", {
-            kind: (btn as HTMLElement).dataset.kind,
-            pageSlug: target.page,
-            postSlug: target.slug,
-            sourcePath: picked,
-          }),
-        );
+        const res: any = await call("import_cover", {
+          kind: button.dataset.kind,
+          pageSlug: target.page,
+          postSlug: target.slug,
+          sourcePath: picked,
+        });
         input.value = res.public_path;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
         await showCoverPreview(input, preview);
       } catch (err) {
         setStatus(String((err as any).message || err));
+      } finally {
+        button.disabled = false;
       }
     });
   });
@@ -1054,6 +1078,7 @@ function openProjectEditor(slug?: string | null) {
     <button id="pr-save" class="btn primary">Save</button>
   `;
   v.appendChild(form);
+  const projectSaveButton = $("#pr-save", form) as HTMLButtonElement;
   wireCoverField(
     v,
     "pr-cover",
@@ -1066,24 +1091,37 @@ function openProjectEditor(slug?: string | null) {
     }),
   );
   if (slug) {
-    cell(async () => {
-      const doc = await call("read_project", { slug });
-      ($("#pr-name") as HTMLInputElement).value = doc?.name || "";
-      ($("#pr-slug") as HTMLInputElement).value = doc?.slug || "";
-      ($("#pr-slug") as HTMLInputElement).readOnly = true;
-      ($("#pr-repo-url") as HTMLInputElement).value = doc?.repo_url || "";
-      ($("#pr-live-url") as HTMLInputElement).value = doc?.live_url || "";
-      ($("#pr-status") as HTMLSelectElement).value = doc?.status || "active";
-      ($("#pr-desc") as HTMLTextAreaElement).value = doc?.description || "";
-      ($("#pr-cover") as HTMLInputElement).value = doc?.cover || "";
-      await showCoverPreview(
-        $("#pr-cover") as HTMLInputElement,
-        $("#pr-cover-preview") as HTMLImageElement,
-      );
-    });
+    projectSaveButton.disabled = true;
+    projectSaveButton.textContent = "Loading…";
+    void (async () => {
+      try {
+        const doc = await call("read_project", { slug });
+        if (!form.isConnected) return;
+        ($("#pr-name") as HTMLInputElement).value = doc?.name || "";
+        ($("#pr-slug") as HTMLInputElement).value = doc?.slug || "";
+        ($("#pr-slug") as HTMLInputElement).readOnly = true;
+        ($("#pr-repo-url") as HTMLInputElement).value = doc?.repo_url || "";
+        ($("#pr-live-url") as HTMLInputElement).value = doc?.live_url || "";
+        ($("#pr-status") as HTMLSelectElement).value = doc?.status || "active";
+        ($("#pr-desc") as HTMLTextAreaElement).value = doc?.description || "";
+        ($("#pr-cover") as HTMLInputElement).value = doc?.cover || "";
+        await showCoverPreview(
+          $("#pr-cover") as HTMLInputElement,
+          $("#pr-cover-preview") as HTMLImageElement,
+        );
+        projectSaveButton.disabled = false;
+        projectSaveButton.textContent = "Save";
+      } catch (error) {
+        if (!form.isConnected) return;
+        projectSaveButton.textContent = "Load failed";
+        setStatus(String((error as any).message || error));
+      }
+    })();
   }
-  $("#pr-save")!.addEventListener("click", async (e: Event) => {
+  form.addEventListener("submit", async (e: SubmitEvent) => {
     e.preventDefault();
+    const saveButton = $("#pr-save", form) as HTMLButtonElement;
+    if (saveButton.disabled) return;
     const name = ($("#pr-name") as HTMLInputElement).value.trim();
     const project = {
       name,
@@ -1094,13 +1132,19 @@ function openProjectEditor(slug?: string | null) {
       description: ($("#pr-desc") as HTMLTextAreaElement).value.trim(),
       cover: ($("#pr-cover") as HTMLInputElement).value.trim(),
     };
+    saveButton.disabled = true;
+    saveButton.textContent = "Saving…";
     try {
+      if (!name) throw new Error("Project name must not be empty.");
       if (slug) await call("update_project", { project });
       else await call("create_project", { project });
-      await refreshProjects();
+      setStatus(slug ? `Saved project ${project.slug}` : `Created project ${project.slug}`);
       showProjectsView();
     } catch (err) {
       setStatus(String((err as any).message || err));
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = "Save";
     }
   });
 }
@@ -1437,7 +1481,8 @@ async function showPageView(slug: string) {
 
 // ---------- Page Editor ----------
 function openPageEditor(slug?: string | null, parent?: string | null) {
-  state.editor?.setStatus(state.status);
+  resetEditorState();
+  state.view = { kind: "page", slug: slug || parent || "" };
   const v = viewContent();
   v.innerHTML = "";
   v.appendChild(el("h1", "page-title", slug ? `Edit Page` : "New Page"));
@@ -1459,6 +1504,7 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     <button id="pe-save" class="btn primary">Save</button>
   `;
   v.appendChild(form);
+  const pageSaveButton = $("#pe-save", form) as HTMLButtonElement;
   wireCoverField(
     v,
     "pe-cover",
@@ -1471,34 +1517,49 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     },
   );
   if (slug) {
-    cell(async () => {
-      const doc = await call("read_page", { slug });
-      ($("#pe-name") as HTMLInputElement).value = doc?.name || "";
-      ($("#pe-slug") as HTMLInputElement).value = doc?.slug || "";
-      ($("#pe-slug") as HTMLInputElement).readOnly = true;
-      ($("#pe-desc") as HTMLTextAreaElement).value = doc?.description || "";
-      ($("#pe-cover") as HTMLInputElement).value = doc?.cover || "";
-      await showCoverPreview(
-        $("#pe-cover") as HTMLInputElement,
-        $("#pe-cover-preview") as HTMLImageElement,
-      );
-      ($("#pe-kind") as HTMLSelectElement).value = doc?.kind || "page";
-      ($("#pe-devlog-repo") as HTMLInputElement).value = doc?.devlog_repo || "";
-      ($("#pe-order") as HTMLInputElement).value = doc?.order != null && doc?.order !== 100 ? String(doc.order) : "";
-      ($("#pe-parent") as HTMLInputElement).value = doc?.parent || parent || "";
-    });
+    pageSaveButton.disabled = true;
+    pageSaveButton.textContent = "Loading…";
+    void (async () => {
+      try {
+        const doc = await call("read_page", { slug });
+        if (!form.isConnected) return;
+        ($("#pe-name") as HTMLInputElement).value = doc?.name || "";
+        ($("#pe-slug") as HTMLInputElement).value = doc?.slug || "";
+        ($("#pe-slug") as HTMLInputElement).readOnly = true;
+        ($("#pe-desc") as HTMLTextAreaElement).value = doc?.description || "";
+        ($("#pe-cover") as HTMLInputElement).value = doc?.cover || "";
+        await showCoverPreview(
+          $("#pe-cover") as HTMLInputElement,
+          $("#pe-cover-preview") as HTMLImageElement,
+        );
+        ($("#pe-kind") as HTMLSelectElement).value = doc?.kind || "page";
+        ($("#pe-devlog-repo") as HTMLInputElement).value = doc?.devlog_repo || "";
+        ($("#pe-order") as HTMLInputElement).value = doc?.order != null && doc?.order !== 100 ? String(doc.order) : "";
+        ($("#pe-parent") as HTMLInputElement).value = doc?.parent || parent || "";
+        pageSaveButton.disabled = false;
+        pageSaveButton.textContent = "Save";
+      } catch (error) {
+        if (!form.isConnected) return;
+        pageSaveButton.textContent = "Load failed";
+        setStatus(String((error as any).message || error));
+      }
+    })();
   } else if (parent) {
     ($("#pe-parent") as HTMLInputElement).value = parent;
   }
-  $("#pe-save")!.addEventListener("click", async (e: Event) => {
+  form.addEventListener("submit", async (e: SubmitEvent) => {
     e.preventDefault();
+    const saveButton = $("#pe-save", form) as HTMLButtonElement;
+    if (saveButton.disabled) return;
     const name = ($("#pe-name") as HTMLInputElement).value.trim();
-    let sl = ($("#pe-slug") as HTMLInputElement).value.trim() || slugify(name);
+    const sl = ($("#pe-slug") as HTMLInputElement).value.trim() || slugify(name);
     const parentVal = ($("#pe-parent") as HTMLInputElement).value.trim() || null;
     const orderRaw = parseInt(($("#pe-order") as HTMLInputElement).value.trim(), 10);
     const orderVal = Number.isNaN(orderRaw) ? null : orderRaw;
     const kind = ($("#pe-kind") as HTMLSelectElement).value;
     const devlogRepo = ($("#pe-devlog-repo") as HTMLInputElement).value.trim();
+    saveButton.disabled = true;
+    saveButton.textContent = "Saving…";
     try {
       if (!name) throw new Error("Page name must not be empty.");
       await call(slug ? "update_page" : "create_page", {
@@ -1513,12 +1574,16 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
           devlog_repo: devlogRepo,
         },
       });
+      delete pageDocCache[sl];
       setStatus(slug ? `Saved page ${sl}` : `Created page ${sl}`);
       await refreshTree();
       if (slug) showPageView(sl);
       else showPagesView();
     } catch (err) {
       setStatus(String((err as any).message || err));
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = "Save";
     }
   });
 }
@@ -1695,6 +1760,7 @@ function updateEditorInsights() {
 }
 
 function openPostEditor(page: string, post: PostDoc | null) {
+  resetEditorState();
   state.view = { kind: "post", page, slug: post?.slug || "" };
   newPostSessionId = post ? "" : sessionId();
   state.editorKey = recoveryKey(page, post?.slug || "");
@@ -1775,10 +1841,14 @@ function openPostEditor(page: string, post: PostDoc | null) {
     ($("#po-date") as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
     ($("#po-status") as HTMLSelectElement).value = prefsDefaultStatus();
     // Devlog pages open with a ready-made skeleton so new entries start faster.
+    const editor = state.editor;
     void pageDocFor(page).then((doc) => {
-      if (doc?.kind === "devlog" && !state.editor!.getValue().trim()) {
-        state.editor!.setBody(DEVLOG_TEMPLATE);
-        state.editor?.setStatus("Devlog template ready");
+      if (doc?.kind === "devlog" && state.editor === editor && editor && !editor.getValue().trim()) {
+        editor.setBody(DEVLOG_TEMPLATE);
+        state.editorDirty = true;
+        scheduleAutosave();
+        editor.setStatus("Devlog template ready — save to keep it");
+        updateEditorInsights();
       }
     });
   }
@@ -1807,8 +1877,9 @@ function openPostEditor(page: string, post: PostDoc | null) {
   $("#shot-btn")!.onclick = () => cell(() => takeScreenshot(page));
   $("#pull-commits-btn")!.onclick = () => cell(() => pullCommits(page));
   $("#export-btn")!.onclick = () => cell(async () => {
+    if (state.editorSave && (state.editorDirty || !state.editorOriginalSlug) && !(await state.editorSave())) return;
     const title = ($("#po-title") as HTMLInputElement).value.trim();
-    const slug = ($("#po-slug") as HTMLInputElement).value.trim() || slugify(title) || "untitled";
+    const slug = state.editorOriginalSlug || ($("#po-slug") as HTMLInputElement).value.trim() || slugify(title) || "untitled";
     const exp = await call("export_post", { pageSlug: page, postSlug: slug });
     if (!exp?.ok) {
       setStatus(exp?.detail || "Export failed.");
@@ -1827,6 +1898,8 @@ function openPostEditor(page: string, post: PostDoc | null) {
     }
     if (ai.tags?.length) ($("#po-tags") as HTMLInputElement).value = ai.tags.join(", ");
     if (ai.technologies?.length) ($("#po-tech") as HTMLInputElement).value = ai.technologies.join(", ");
+    state.editorDirty = true;
+    scheduleAutosave();
     state.editor?.setStatus("Suggested metadata applied — review before saving");
     setStatus("Metadata suggested");
     updateEditorInsights();
@@ -1859,7 +1932,13 @@ function bindPostSave(page: string) {
   const save = async () => {
     if (state.saving) return false;
     if (!editorActive()) return false;
+    const editor = state.editor;
+    if (!editor) return false;
     state.saving = true;
+    syncPostActions();
+    const oldKey = state.editorKey;
+    const originalSlug = state.editorOriginalSlug;
+    const assetFrom = state.editorAssetSlug || targetSlugFor();
     const meta = {
       title: ($("#po-title") as HTMLInputElement).value.trim(),
       slug: ($("#po-slug") as HTMLInputElement).value.trim(),
@@ -1882,17 +1961,20 @@ function bindPostSave(page: string) {
     try {
       if (!meta.title) throw new Error("Post title must not be empty.");
       const savedSlug = await call("write_post", { input: {
-        page_slug: page, original_slug: state.editorOriginalSlug,
-        draft_asset_slug: state.editorOriginalSlug ? "" : (state.editorAssetSlug || targetSlugFor()), meta, body: state.editor!.getValue(),
+        page_slug: page, original_slug: originalSlug,
+        draft_asset_slug: originalSlug ? "" : assetFrom, meta, body: editor.getValue(),
       } });
       // Success: clear autosave recovery for this post, then switch the draft key
       // from the placeholder to the real slug so later autosaves are keyed correctly.
-      const oldKey = state.editorKey;
-      const assetFrom = state.editorAssetSlug || targetSlugFor();
-      state.editorKey = recoveryKey(page, String(savedSlug || meta.slug));
-      state.editorOriginalSlug = String(savedSlug || meta.slug);
-      state.editorAssetSlug = String(savedSlug || meta.slug);
       await cell(() => call("clear_recovery", { key: oldKey }));
+      if (state.editor !== editor || !editorActive()) return true;
+      const resolvedSlug = String(savedSlug || meta.slug);
+      state.editorKey = recoveryKey(page, resolvedSlug);
+      state.editorOriginalSlug = resolvedSlug;
+      state.editorAssetSlug = resolvedSlug;
+      state.view = { kind: "post", page, slug: resolvedSlug };
+      const slugInput = $("#po-slug") as HTMLInputElement | null;
+      if (slugInput) slugInput.value = resolvedSlug;
       for (const k of pendingClearKeys) {
         await cell(() => call("clear_recovery", { key: k }));
       }
@@ -1912,11 +1994,13 @@ function bindPostSave(page: string) {
       return false;
     } finally {
       state.saving = false;
+      syncPostActions();
     }
   };
   state.editorSave = save;
   $("#save-btn")!.onclick = () => cell(save);
   $("#preview-btn")!.onclick = () => cell(() => doPreview());
+  syncPostActions();
 }
 
 function splitChips(v: string) {
@@ -1924,15 +2008,29 @@ function splitChips(v: string) {
 }
 
 async function showPostView(page: string, slug: string) {
-  const doc = await cell(() => call("read_post", { pageSlug: page, postSlug: slug }));
-  if (!doc) return;
-  openPostEditor(page, doc);
+  resetEditorState();
+  state.view = { kind: "post", page, slug };
+  const v = viewContent();
+  v.innerHTML = `<h1 class="page-title">Edit Post</h1><p class="muted">Loading post…</p>`;
+  try {
+    const doc = await call("read_post", { pageSlug: page, postSlug: slug });
+    if (state.view.kind !== "post" || state.view.page !== page || state.view.slug !== slug) return;
+    openPostEditor(page, doc);
+  } catch (error) {
+    if (state.view.kind !== "post" || state.view.page !== page || state.view.slug !== slug) return;
+    const message = String((error as any).message || error);
+    v.innerHTML = `<h1 class="page-title">Could not open post</h1><p class="error-text">${esc(message)}</p>`;
+    setStatus(message);
+  }
 }
 
 async function doPreview() {
-  await cell(async () => {
-    if (!editorActive()) return;
+  if (!editorActive() || state.previewing) return;
+  state.previewing = true;
+  syncPostActions();
+  try {
     if (state.editorSave && !(await state.editorSave())) return;
+    setStatus("Building preview…");
     const mode = state.prefs?.publish_mode === "publish" ? "publish" : "preview";
     if (mode === "publish") {
       // Publish-mode build: exact production output (drafts hidden).
@@ -1944,7 +2042,10 @@ async function doPreview() {
     }
     await call("build_site", { mode: "preview" });
     setStatus("Build complete — preview ready (not published)");
-  });
+  } finally {
+    state.previewing = false;
+    syncPostActions();
+  }
 }
 
 // ---------- Global shortcuts ----------
@@ -1965,7 +2066,7 @@ async function openCommandPalette() {
   const actions: PaletteAction[] = [
     { label: "Dashboard", detail: "Workspace overview", keywords: "home overview", run: showDashboard },
     { label: "All posts", detail: "Filter and review content", keywords: "content writing", run: showAllPostsView },
-    { label: "New post", detail: "Create a draft", keywords: "write create", run: () => openPostEditor(promptPageForPost(), null) },
+    { label: "New post", detail: "Create a draft", keywords: "write create", run: startNewPost },
     { label: "Pages", detail: "Manage site sections", keywords: "hubs sections", run: showPagesView },
     { label: "Projects", detail: "Manage portfolio projects", keywords: "portfolio", run: showProjectsView },
     { label: "Build preview", detail: "Generate a local preview", keywords: "build site", run: () => void cell(doPreview) },
@@ -2163,24 +2264,37 @@ async function confirmBuiltPublish(
 }
 
 function openPublish() {
-  const overlay = el("div", "overlay");
+  const existing = document.querySelector<HTMLElement>(".publish-overlay");
+  if (existing) {
+    existing.querySelector<HTMLElement>(".modal")?.focus();
+    return;
+  }
+  const overlay = el("div", "overlay publish-overlay");
   overlay.innerHTML = `
-    <div class="modal">
+    <div class="modal" tabindex="-1">
       <h2>Publish changes</h2>
       <div id="publish-body" class="publish-body"><p class="muted">Checking repository state…</p></div>
       <div class="modal-actions">
         <button id="pub-cancel" class="btn">Cancel</button>
-        <button id="pub-go" class="btn publish">Publish</button>
+        <button id="pub-go" class="btn publish" disabled>Checking…</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
+  overlay.querySelector<HTMLElement>(".modal")?.focus();
   const body = $("#publish-body", overlay)!;
+  const publishAction = $("#pub-go", overlay) as HTMLButtonElement;
+  const blockPublishAction = (hide = true) => {
+    publishAction.disabled = true;
+    publishAction.style.display = hide ? "none" : "";
+    if (!hide) publishAction.textContent = "Unavailable";
+  };
   $("#pub-cancel", overlay)!.onclick = () => overlay.remove();
 
-  cell(async () => {
+  void (async () => {
     if (state.editorSave && editorActive() && state.editorDirty && !(await state.editorSave())) {
       body.innerHTML = `<p class="error-text">Save the current editor changes before publishing.</p>`;
+      blockPublishAction();
       return;
     }
     let st;
@@ -2189,13 +2303,16 @@ function openPublish() {
     } catch (e) {
       body.innerHTML = `<p class="error-text">Could not read Git status: ${esc(String((e as any).message || e))}</p>
         <p class="muted">Open Settings to set or verify the repository path.</p>`;
+      blockPublishAction();
       return;
     }
     if (!st) {
       body.innerHTML = `<p class="error-text">Could not read Git status. Open Settings to set the repository path.</p>`;
+      blockPublishAction();
       return;
     }
     if (st.staged?.length) {
+      blockPublishAction();
       body.innerHTML = `<p class="error-text">Publishing is blocked because the Git index already contains staged files.</p>
         <p class="muted">The studio only stages files it has just validated. Unstage these to continue (e.g. if a previous publish was interrupted):</p>
         <pre class="diffbox">${esc(st.staged.map((f: any) => f.path).join("\n"))}</pre>
@@ -2206,7 +2323,7 @@ function openPublish() {
       $("#pub-cancel-staged", overlay)!.onclick = () => overlay.remove();
       $("#pub-unstage", overlay)!.onclick = async () => {
         try {
-          await cell(() => call("git_unstage", { paths: [] }));
+          await call("git_unstage", { paths: [] });
           body.innerHTML = `<p class="muted">Unstaged. Re-checking…</p>`;
           overlay.remove();
           openPublish();
@@ -2216,8 +2333,16 @@ function openPublish() {
       };
       return;
     }
-    const auth = await cell(() => call("git_auth_status"));
+    let auth;
+    try {
+      auth = await call("git_auth_status");
+    } catch (error) {
+      blockPublishAction();
+      body.innerHTML = `<p class="error-text">Could not check GitHub authentication.</p><pre class="diffbox">${esc(String((error as any).message || error))}</pre>`;
+      return;
+    }
     if (auth && !auth.authenticated) {
+      blockPublishAction();
       body.innerHTML = `<p class="error-text">Not signed in to GitHub.</p>
         <p class="muted">${auth.gh_installed ? "Use the button below to sign in in your browser (GitHub CLI device flow)." : "GitHub CLI (<code>gh</code>) not installed — install it or configure Git credentials for the remote."}</p>
         ${auth.error ? `<pre class="diffbox diff-big">${esc(String(auth.error).slice(0, 300))}</pre>` : ""}
@@ -2269,13 +2394,16 @@ function openPublish() {
       <label>Commit message<input id="pub-msg" value="Update portfolio content" /></label>
       <p class="muted">Will lint and build locally, commit the reviewed source/output, fast-forward main, and deploy only the public snapshot to gh-pages. GitHub Actions is not used.</p>
     `;
+    publishAction.style.display = "";
+    publishAction.textContent = "Publish";
+    publishAction.disabled = Boolean(syncState);
     $("#pub-cancel3", overlay)?.addEventListener("click", () => overlay.remove());
     $("#pub-pull", overlay)?.addEventListener("click", async () => {
       const pullBtn2 = $("#pub-pull", overlay)!;
       pullBtn2.disabled = true;
       pullBtn2.textContent = "Pulling…";
       try {
-        const out = await cell(() => call("git_pull", { strategy: "rebase" }));
+        const out = await call("git_pull", { strategy: "rebase" });
         body.innerHTML = `<p class="success-text">Pulled latest changes.</p><pre class="diffbox">${esc(String(out ?? "ok"))}</pre>
           <div class="modal-actions"><button id="pub-again" class="btn publish">Re-check</button></div>`;
         $("#pub-again", overlay)!.onclick = () => {
@@ -2293,11 +2421,7 @@ function openPublish() {
       }
       return;
     });
-    if (syncState) {
-      const go = $("#pub-go", overlay)!;
-      go.disabled = true;
-      go.textContent = "Pull latest first";
-    }
+    if (syncState) publishAction.textContent = "Pull latest first";
     $("#pub-go", overlay)!.onclick = async () => {
       const requestedMessage = ($("#pub-msg", overlay) as HTMLInputElement)?.value.trim() || "Update portfolio content";
       $("#pub-go", overlay)!.disabled = true;
@@ -2451,6 +2575,11 @@ function openPublish() {
         closeButton.textContent = "Close";
       }
     };
+  })().catch((error) => {
+    const message = String((error as any).message || error);
+    body.innerHTML = `<p class="error-text">Could not prepare publishing.</p><pre class="diffbox">${esc(message)}</pre>`;
+    blockPublishAction();
+    setStatus(message);
   });
 }
 
@@ -2467,27 +2596,46 @@ async function unstageQuietly(paths: string[]) {
 }
 
 function applyThemeToggle(theme: string) {
-  document.documentElement.dataset.theme = theme;
-  const btn = $("#settings-btn")!;
-  btn.textContent = theme === "dark" ? "☾" : "☀";
+  const resolved = theme === "dark" || theme === "light"
+    ? theme
+    : window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = resolved;
+  const btn = $("#settings-btn");
+  if (btn) btn.textContent = resolved === "dark" ? "☾" : "☀";
 }
 
 // ---------- PDF to post ----------
-function promptPageForPost(): string {
-  const promptVal = window.prompt("Page slug to publish this post into (or leave empty for the first page):")?.trim();
-  return promptVal || state.tree[0]?.slug || "";
+function promptPageForPost(): string | null {
+  const promptVal = window.prompt("Page slug to publish this post into (or leave empty for the first page):");
+  if (promptVal === null) return null;
+  const page = promptVal.trim() || state.tree[0]?.slug || "";
+  if (!page) {
+    setStatus("Create a page before adding your first post.");
+    openPageEditor();
+    return null;
+  }
+  return page;
+}
+
+function startNewPost() {
+  const page = promptPageForPost();
+  if (page) openPostEditor(page, null);
 }
 
 async function newPostFromPdf() {
+  const page = promptPageForPost();
+  if (!page) return;
   const path = await cell(() => call("pick_file", { filterName: "PDF", filterExts: ["pdf"] }));
   if (!path) return;
   const pdf = await cell(() => call("import_pdf", { sourcePath: path }));
   if (!pdf) return;
-  const page = promptPageForPost();
   openPostEditor(page, null);
   ($("#po-title") as HTMLInputElement).value = pdf.title || "Untitled";
   const lines = (pdf.text || "").trim().split("\n");
   state.editor!.setBody(lines.slice(0, 250).join("\n"));
+  state.editorDirty = true;
+  scheduleAutosave();
+  updateEditorInsights();
   state.editor?.setStatus(`Imported PDF — review before saving`);
   setStatus(pdf.is_image_only
     ? `No extractable text in this PDF (${pdf.page_count ?? "?"} pages).`
@@ -2703,14 +2851,9 @@ function showSettings() {
     }
   };
   $("#set-save")!.onclick = async () => {
+    const button = $("#set-save") as HTMLButtonElement;
+    const message = $("#set-msg") as HTMLElement;
     const repo = ($("#set-repo") as HTMLInputElement).value.trim();
-    if (repo) {
-      const check = await cell(() => call("check_repo", { repoPath: repo }));
-      if (check && !check.is_repo) {
-        ($("#set-msg") as HTMLElement).textContent = "Warning: folder is not a Git repository.";
-        ($("#set-msg") as HTMLElement).className = "error-text";
-      }
-    }
     const prefs = {
       repo_path: repo || null,
       devlog_repo: ($("#set-devlog-repo") as HTMLInputElement).value.trim() || null,
@@ -2727,13 +2870,34 @@ function showSettings() {
         sync_gateway_url: ($("#set-sync-url") as HTMLInputElement).value.trim() || null,
       },
     };
-    // Merge over current prefs so never-rendered fields (window state, editor
-    // mode, sidebar width, …) are preserved locally and on disk.
-    state.prefs = { ...state.prefs, ...prefs, settings: { ...state.prefs?.settings, ...prefs.settings } };
-    await cell(() => call("set_prefs", { prefs }));
-    applyThemeToggle(state.prefs.theme === "dark" ? "dark" : state.prefs.theme === "light" ? "light" : "dark");
-    ($("#set-msg") as HTMLElement).textContent = "Saved.";
-    await refreshTree();
+    button.disabled = true;
+    button.textContent = "Saving…";
+    message.textContent = "";
+    message.className = "muted";
+    try {
+      if (repo) {
+        const check = await call("check_repo", { repoPath: repo });
+        if (!check?.is_repo) throw new Error("The selected folder is not a Git repository.");
+        if (!check?.looks_like_site) throw new Error("The selected repository does not look like the portfolio site (content/ and assets/ are required).");
+      }
+      await call("set_prefs", { prefs });
+      // Mirror the backend's deep merge so never-rendered preferences remain
+      // available to the running UI as well as on disk.
+      state.prefs = { ...state.prefs, ...prefs, settings: { ...state.prefs?.settings, ...prefs.settings } };
+      applyThemeToggle(state.prefs.theme || "system");
+      message.textContent = "Settings saved.";
+      message.className = "success-text";
+      setStatus("Settings saved");
+      await refreshTree();
+    } catch (error) {
+      const detail = String((error as any).message || error);
+      message.textContent = detail;
+      message.className = "error-text";
+      setStatus(detail);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Save Settings";
+    }
   };
 }
 
@@ -2742,11 +2906,13 @@ async function renderAuthStatus() {
   if (!host) return;
   host.className = "auth-status loading";
   host.innerHTML = `<p class="muted">Checking GitHub connection…</p>`;
-  await cell(async () => {
+  try {
     const st = await call("git_auth_status");
+    if (!host.isConnected) return;
     if (!st) {
       host.className = "auth-status error";
-      host.innerHTML = "<p class=\"error-text\">Could not check GitHub (no repository configured?).</p>";
+      host.innerHTML = `<p class="error-text">Could not check GitHub (no repository configured?).</p><p><button id="auth-refresh" class="btn">Check again</button></p>`;
+      $("#auth-refresh", host)!.onclick = () => void renderAuthStatus();
       return;
     }
     if (st.authenticated) {
@@ -2769,9 +2935,16 @@ async function renderAuthStatus() {
           ? `<p><button id="auth-signin" class="btn">Sign in with GitHub</button> <button id="auth-refresh" class="btn">Check again</button></p>`
           : `<p><button id="auth-refresh" class="btn">Check again</button></p>`);
     }
-    $("#auth-signin")!.onclick = () => renderSignIn(host, renderAuthStatus);
-    $("#auth-refresh")!.onclick = renderAuthStatus;
-  });
+    const signIn = $("#auth-signin", host) as HTMLButtonElement | null;
+    if (signIn) signIn.onclick = () => void renderSignIn(host, renderAuthStatus);
+    const refresh = $("#auth-refresh", host) as HTMLButtonElement | null;
+    if (refresh) refresh.onclick = () => void renderAuthStatus();
+  } catch (error) {
+    if (!host.isConnected) return;
+    host.className = "auth-status error";
+    host.innerHTML = `<p class="error-text">Could not check GitHub: ${esc(String((error as any).message || error))}</p><p><button id="auth-refresh" class="btn">Try again</button></p>`;
+    $("#auth-refresh", host)!.onclick = () => void renderAuthStatus();
+  }
 }
 
 // ---------- Wiring ----------
@@ -2784,7 +2957,7 @@ function wireTop() {
     else if (nav === "pages") showPagesView();
     else if (nav === "projects") showProjectsView();
     else if (nav === "allposts") showAllPostsView();
-    else if (nav === "newpost") openPostEditor(promptPageForPost(), null);
+    else if (nav === "newpost") startNewPost();
     else if (nav === "newpostpdf") void cell(newPostFromPdf);
     else if (nav === "settings") showSettings();
   };

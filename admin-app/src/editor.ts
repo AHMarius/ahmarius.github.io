@@ -198,7 +198,7 @@ export class Editor {
         const endIdx = lineEnd === -1 ? v.length : lineEnd;
         const line = v.slice(lineStart, endIdx).replace(/^#{1,6}\s+/, "");
         const nl = `${"#".repeat(level)} ${line}`;
-        this.setTextValue(v.slice(0, lineStart) + nl + v.slice(endIdx));
+        setTextValueWith(this, v.slice(0, lineStart) + nl + v.slice(endIdx));
         break;
       }
       case "B":
@@ -259,8 +259,6 @@ export class Editor {
         this.setBlock("$$\n", "\n$$");
         break;
     }
-    this.refresh();
-    this.onChange();
   }
 
   private async insertImage() {
