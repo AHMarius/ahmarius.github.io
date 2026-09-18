@@ -195,3 +195,35 @@
     padding-right: 1rem;
   }
 }
+
+/* Keep generated page hubs visually aligned with projects and devlog cards. */
+.pages-grid {
+  gap: 1rem;
+}
+
+.page-card {
+  border-color: color-mix(in srgb, var(--color-link) 10%, var(--pages-border));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 18px 50px rgba(20, 22, 26, 0.1);
+}
+
+.page-card::before {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--color-link) 58%, transparent), transparent 45%) top left / 100% 2px no-repeat,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14), transparent 48%);
+}
+
+.page-card:hover {
+  border-color: color-mix(in srgb, var(--color-link) 45%, var(--pages-border));
+  box-shadow: 0 26px 68px rgba(20, 22, 26, 0.15);
+}
+
+.page-card-title {
+  font-weight: 740;
+  letter-spacing: -0.02em;
+}
+
+.page-card > p {
+  color: color-mix(in srgb, var(--color-text) 72%, transparent);
+}
