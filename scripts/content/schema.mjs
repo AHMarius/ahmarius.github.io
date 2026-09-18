@@ -1,6 +1,6 @@
 const POST_REQUIRED = ['title', 'slug', 'date', 'status', 'page'];
 const PAGE_REQUIRED = ['name', 'slug'];
-const POST_STATUSES = ['published', 'draft'];
+const POST_STATUSES = ['published', 'draft', 'archived'];
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export function validatePostMeta(meta) {

@@ -14,6 +14,11 @@ export interface SyncFile {
   size: number;
 }
 
+export interface SyncFileList {
+  files: SyncFile[];
+  truncated: boolean;
+}
+
 function gatewayUrl(raw: string): string {
   const url = new URL(raw.trim());
   const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
@@ -24,13 +29,24 @@ function gatewayUrl(raw: string): string {
 }
 
 async function request(url: string, path: string, init: RequestInit): Promise<any> {
-  const response = await fetch(`${gatewayUrl(url)}${path}`, {
-    ...init,
-    headers: { "content-type": "application/json", ...(init.headers || {}) },
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body?.error || `Sync request failed (${response.status}).`);
-  return body;
+  const hasBody = init.body != null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(`${gatewayUrl(url)}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: { ...(hasBody ? { "content-type": "application/json" } : {}), ...(init.headers || {}) },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error || `Sync request failed (${response.status}).`);
+    return body;
+  } catch (error) {
+    if ((error as any)?.name === "AbortError") throw new Error("The sync gateway did not respond within 20 seconds.");
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 /** Creates a one-time phone pairing code. The admin secret is never stored. */
@@ -58,9 +74,13 @@ function sessionHeaders(token: string): HeadersInit {
   return { authorization: `Bearer ${token}` };
 }
 
-export async function listSyncFiles(gateway: string, token: string): Promise<SyncFile[]> {
+export async function listSyncFiles(gateway: string, token: string): Promise<SyncFileList> {
   const result = await request(gateway, "/v1/tree", { method: "GET", headers: sessionHeaders(token) });
-  return Array.isArray(result?.files) ? result.files : [];
+  return { files: Array.isArray(result?.files) ? result.files : [], truncated: Boolean(result?.truncated) };
+}
+
+export async function endSyncSession(gateway: string, token: string): Promise<void> {
+  await request(gateway, "/v1/sessions/current", { method: "DELETE", headers: sessionHeaders(token) });
 }
 
 export async function readSyncFile(gateway: string, token: string, path: string): Promise<{ sha: string; content: string }> {
@@ -74,8 +94,11 @@ export async function readSyncFile(gateway: string, token: string, path: string)
 
 export async function writeSyncFile(gateway: string, token: string, path: string, sha: string, content: string): Promise<{ sha: string }> {
   const bytes = new TextEncoder().encode(content);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  }
+  const binary = chunks.join("");
   return request(gateway, `/v1/content/${path.split("/").map(encodeURIComponent).join("/")}`, {
     method: "PUT",
     headers: sessionHeaders(token),

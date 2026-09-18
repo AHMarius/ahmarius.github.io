@@ -67,6 +67,7 @@ export interface PostRow {
   technologies: string[];
   series: string;
   part: number;
+  body: string;
   path: string;
 }
 
@@ -109,6 +110,8 @@ export interface ContentNode {
   type_: string;
   slug: string;
   name: string;
+  description: string;
+  cover: string;
   status: string;
   kind?: string;
   path: string;

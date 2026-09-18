@@ -1,4 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const escapeHtml = (value = "") => String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
   // Build the on-page table of contents (>=3 headings) client-side so the
   // site builds as plain Jekyll with no custom plugins (GitHub Pages-safe).
   const article = document.querySelector(".devlog-article, .page-body");
@@ -21,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const items = headings
         .map((heading) => {
           const level = heading.tagName === "H3" ? 3 : 2;
-          return `<li class="post-toc-l${level}"><a href="#${heading.id}">${heading.textContent.trim()}</a></li>`;
+          return `<li class="post-toc-l${level}"><a href="#${heading.id}">${escapeHtml(heading.textContent.trim())}</a></li>`;
         })
         .join("\n");
       const nav = document.createElement("nav");
@@ -56,8 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
           await navigator.share({ title, url: href });
           return;
-        } catch {
-          // aborted/cancelled by the user
+        } catch (error) {
+          if (error?.name === "AbortError") return;
         }
       }
       try {
@@ -106,20 +112,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   const progress = document.querySelector(".reading-progress span");
-  const backToTop = document.createElement("button");
-  backToTop.className = "back-to-top";
-  backToTop.type = "button";
-  backToTop.setAttribute("aria-label", "Back to top");
-  backToTop.textContent = "↑";
-  backToTop.hidden = true;
-  document.body.appendChild(backToTop);
-
   let ticking = false;
   const updateReadingPosition = () => {
     const max = document.documentElement.scrollHeight - window.innerHeight;
     const ratio = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
     if (progress) progress.style.width = `${ratio * 100}%`;
-    backToTop.hidden = window.scrollY < Math.min(500, window.innerHeight * 0.7);
     ticking = false;
   };
   window.addEventListener("scroll", () => {
@@ -128,6 +125,5 @@ document.addEventListener("DOMContentLoaded", () => {
       ticking = true;
     }
   }, { passive: true });
-  backToTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   updateReadingPosition();
 });

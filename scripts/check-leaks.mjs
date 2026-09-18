@@ -7,6 +7,13 @@ const ROOT = process.cwd();
 const DEVLOG_DIR = path.join(ROOT, 'devlog');
 const PAGES_OUT = path.join(ROOT, 'pages');
 const SEARCH_INDEX = path.join(ROOT, 'search-index.json');
+const ROOT_OUTPUTS = [
+  path.join(ROOT, 'devlog.html'),
+  path.join(ROOT, 'pages.html'),
+  path.join(ROOT, 'feed.xml'),
+  path.join(ROOT, 'atom.xml'),
+  path.join(ROOT, 'sitemap.xml'),
+];
 
 async function collectDraftSlugs() {
   const drafts = [];
@@ -73,12 +80,9 @@ async function main() {
   const files = [
     ...(await listHtmlFiles(DEVLOG_DIR)),
     ...(await listHtmlFiles(PAGES_OUT)),
+    ...ROOT_OUTPUTS,
+    SEARCH_INDEX,
   ];
-  try {
-    files.push(SEARCH_INDEX);
-  } catch {
-    // search-index may not exist yet
-  }
 
   const leaks = [];
   for (const file of files) {

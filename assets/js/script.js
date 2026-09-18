@@ -49,7 +49,10 @@ function initReducedMotionVideo() {
 
 function initThemeToggle() {
   const storedTheme = localStorage.getItem("theme");
-  const theme = storedTheme === "dark" ? "dark" : "light";
+  const systemTheme = window.matchMedia?.("(prefers-color-scheme: dark)");
+  const theme = storedTheme === "dark" || storedTheme === "light"
+    ? storedTheme
+    : systemTheme?.matches ? "dark" : "light";
 
   document.documentElement.dataset.theme = theme;
 
@@ -79,6 +82,13 @@ function initThemeToggle() {
 
     document.documentElement.dataset.theme = nextTheme;
     localStorage.setItem("theme", nextTheme);
+    updateButton(nextTheme);
+  });
+
+  systemTheme?.addEventListener("change", (event) => {
+    if (localStorage.getItem("theme")) return;
+    const nextTheme = event.matches ? "dark" : "light";
+    document.documentElement.dataset.theme = nextTheme;
     updateButton(nextTheme);
   });
 }
@@ -114,20 +124,31 @@ function initHamburgerMenu() {
 
   if (!btn || !menu) return;
 
-  btn.addEventListener("click", () => {
-    const open = !menu.hidden;
+  const close = (restoreFocus = false) => {
+    menu.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    btn.classList.remove("is-open");
+    if (restoreFocus) btn.focus();
+  };
 
-    menu.hidden = open;
-    btn.setAttribute("aria-expanded", String(!open));
-    btn.classList.toggle("is-open", !open);
+  btn.addEventListener("click", () => {
+    if (!menu.hidden) {
+      close();
+      return;
+    }
+    menu.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    btn.classList.add("is-open");
   });
 
   menu.addEventListener("click", (e) => {
-    if (e.target.tagName === "A") {
-      menu.hidden = true;
-      btn.setAttribute("aria-expanded", "false");
-      btn.classList.remove("is-open");
-    }
+    if (e.target.closest("a")) close();
+  });
+  document.addEventListener("click", (event) => {
+    if (!menu.hidden && !menu.contains(event.target) && !btn.contains(event.target)) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !menu.hidden) close(true);
   });
 }
 
@@ -173,33 +194,11 @@ async function loadGalleryImages(folder, gallery) {
 
     if (res.ok) {
       const files = await res.json();
-      renderGallery(gallery, base, files);
+      renderGallery(gallery, base, Array.isArray(files) ? files : []);
       return;
     }
   } catch {}
-
-  try {
-    const res = await fetch(base);
-
-    if (!res.ok) throw new Error();
-
-    const html = await res.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-
-    const files = Array.from(doc.querySelectorAll("a"))
-      .map((a) => a.getAttribute("href"))
-      .filter(
-        (file) =>
-          file &&
-          IMAGE_EXTENSIONS.some((ext) =>
-            file.toLowerCase().endsWith("." + ext),
-          ),
-      );
-
-    renderGallery(gallery, base, files);
-  } catch {
-    markGalleryEmpty(gallery);
-  }
+  markGalleryEmpty(gallery);
 }
 
 function renderGallery(gallery, folder, files) {
@@ -237,21 +236,31 @@ function renderGallery(gallery, folder, files) {
   const counter = document.createElement("div");
   counter.className = "carousel-counter";
 
+  const entries = files.map((entry) => typeof entry === "string" ? { src: entry, alt: "" } : entry)
+    .filter((entry) => entry?.src && IMAGE_EXTENSIONS.some((ext) => entry.src.toLowerCase().endsWith("." + ext)));
+  if (!entries.length) {
+    markGalleryEmpty(gallery);
+    return;
+  }
+
   function show(index) {
-    current = (index + files.length) % files.length;
-    const file = files[current];
-    img.src = folder + file;
-    img.alt = file;
-    counter.textContent = `${current + 1} / ${files.length}`;
+    current = (index + entries.length) % entries.length;
+    const entry = entries[current];
+    img.src = folder + entry.src;
+    const fallbackAlt = decodeURIComponent(entry.src).split("/").pop().replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+    img.alt = entry.alt || `${fallbackAlt || "Project"} screenshot`;
+    counter.textContent = `${current + 1} / ${entries.length}`;
   }
 
   prevBtn.addEventListener("click", () => show(current - 1));
   nextBtn.addEventListener("click", () => show(current + 1));
 
-  gallery.appendChild(prevBtn);
+  if (entries.length > 1) gallery.appendChild(prevBtn);
   gallery.appendChild(viewport);
-  gallery.appendChild(nextBtn);
-  gallery.appendChild(counter);
+  if (entries.length > 1) {
+    gallery.appendChild(nextBtn);
+    gallery.appendChild(counter);
+  }
 
   show(0);
 }
@@ -418,27 +427,16 @@ async function initGitHubStats() {
   const countEl = document.getElementById("github-repo-count");
   const statusEl = document.getElementById("github-repo-status");
 
-  console.log("countEl:", countEl);
-  console.log("statusEl:", statusEl);
-
-  if (!countEl || !statusEl) {
-    console.error("Elements not found.");
-    return;
-  }
+  if (!countEl || !statusEl) return;
 
   try {
     const res = await fetch("https://api.github.com/users/ahmarius");
-    console.log("Status:", res.status);
-
+    if (!res.ok) throw new Error(`GitHub returned HTTP ${res.status}`);
     const data = await res.json();
-    console.log("Response:", data);
-    console.log("public_repos:", data.public_repos);
-
-    countEl.textContent = data.public_repos;
+    if (!Number.isInteger(data.public_repos)) throw new Error("GitHub response did not include public_repos");
+    countEl.textContent = String(data.public_repos);
     statusEl.textContent = "live from GitHub";
-  } catch (err) {
-    console.error("GitHub error:", err);
-
+  } catch {
     countEl.textContent = "20+";
     statusEl.textContent = "cached";
   }
@@ -491,28 +489,22 @@ function initActivePage() {
 
 function initProjectKeyboardControls() {
   document.querySelectorAll(".project-card").forEach((card) => {
-    card.setAttribute("tabindex", "0");
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-expanded", "false");
-
     const title = card.querySelector(".project-title");
-    if (title) {
-      card.setAttribute(
-        "aria-label",
-        `Expand project: ${title.textContent.trim()}`,
-      );
-    }
-
-    card.addEventListener("keydown", (event) => {
-      if (event.target !== card) return;
-
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-
-        const open = card.classList.toggle("keyboard-open");
-        card.setAttribute("aria-expanded", String(open));
-      }
+    const header = card.querySelector(".card-header");
+    if (!title || !header || header.querySelector(".project-expand-toggle")) return;
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "project-expand-toggle";
+    toggle.textContent = "Expand";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", `Expand project: ${title.textContent.trim()}`);
+    toggle.addEventListener("click", () => {
+      const open = card.classList.toggle("is-expanded");
+      toggle.textContent = open ? "Collapse" : "Expand";
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", `${open ? "Collapse" : "Expand"} project: ${title.textContent.trim()}`);
     });
+    header.appendChild(toggle);
   });
 }
 
@@ -846,13 +838,16 @@ function initSiteSearch() {
   let index = null;
   let visibleHits = [];
   let activeHit = -1;
+  let returnFocus = null;
   const indexUrl = button.dataset.indexUrl || "search-index.json";
 
   async function loadIndex() {
     if (index) return index;
     try {
       const res = await fetch(indexUrl);
-      index = await res.json();
+      if (!res.ok) throw new Error(`Search index returned HTTP ${res.status}`);
+      const data = await res.json();
+      index = Array.isArray(data) ? data : [];
     } catch {
       index = [];
     }
@@ -860,6 +855,7 @@ function initSiteSearch() {
   }
 
   function open() {
+    returnFocus = document.activeElement;
     overlay.hidden = false;
     button.setAttribute("aria-expanded", "true");
     input.value = "";
@@ -869,9 +865,21 @@ function initSiteSearch() {
     window.setTimeout(() => input.focus(), 10);
   }
 
-  function close() {
+  function close({ restoreFocus = true } = {}) {
     overlay.hidden = true;
     button.setAttribute("aria-expanded", "false");
+    if (restoreFocus && returnFocus && typeof returnFocus.focus === "function") returnFocus.focus();
+    returnFocus = null;
+  }
+
+  function safeSearchUrl(value) {
+    try {
+      const url = new URL(String(value || ""), window.location.href);
+      if (!/^https?:$/.test(url.protocol) || url.origin !== window.location.origin) return "#";
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      return "#";
+    }
   }
 
   function match(entry, term) {
@@ -904,7 +912,7 @@ function initSiteSearch() {
     }
     results.innerHTML = hits
       .map(
-        (e, index) => `<a href="${e.url}" class="search-result${index === activeHit ? " is-active" : ""}" role="option" aria-selected="${index === activeHit}" data-search-hit="${index}">
+        (e, index) => `<a href="${escapeHtml(safeSearchUrl(e.url))}" class="search-result${index === activeHit ? " is-active" : ""}" role="option" aria-selected="${index === activeHit}" data-search-hit="${index}">
           <span class="search-result-heading"><span class="search-kind">${escapeHtml(e.kind || "post")}</span><span class="search-result-title">${escapeHtml(e.title)}</span></span>
           <span class="search-result-excerpt">${escapeHtml(e.excerpt || "")}</span>
           <span class="search-result-meta">${escapeHtml(e.page || "")}${e.date ? " · " + escapeHtml(e.date) : ""}${e.project ? " · " + escapeHtml(e.project) : ""}</span>
@@ -934,11 +942,12 @@ function initSiteSearch() {
     }
     if (event.key === "Enter" && visibleHits[activeHit]) {
       event.preventDefault();
-      window.location.href = visibleHits[activeHit].url;
+      const target = safeSearchUrl(visibleHits[activeHit].url);
+      if (target !== "#") window.location.href = target;
     }
   });
-  document.addEventListener("click", (event) => {
-    if (isVisible() && !overlay.contains(event.target) && event.target !== button) close();
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && isVisible()) close();
@@ -946,7 +955,19 @@ function initSiteSearch() {
       event.preventDefault();
       isVisible() ? close() : open();
     }
-    if (event.key === "/" && !/input|textarea|select/i.test(document.activeElement?.tagName || "")) {
+    if (event.key === "Tab" && isVisible()) {
+      const focusable = [input, ...overlay.querySelectorAll('a[href], button:not([disabled])')];
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    if (event.key === "/" && !document.getElementById("devlog-search") && !/input|textarea|select/i.test(document.activeElement?.tagName || "")) {
       event.preventDefault();
       if (!isVisible()) open();
     }

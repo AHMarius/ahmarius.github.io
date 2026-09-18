@@ -56,6 +56,41 @@ test('nested page creation + discovery', async () => {
   assert.equal(pages.length, 2);
 });
 
+test('page hierarchy rejects duplicate slugs before output paths can collide', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'duplicate-pages-'));
+  const pagesRoot = path.join(tmp, 'content', 'pages');
+  const left = path.join(pagesRoot, 'left');
+  const right = path.join(pagesRoot, 'right');
+  const leftChild = path.join(left, 'subpages', 'shared');
+  const rightChild = path.join(right, 'subpages', 'shared');
+  await Promise.all([
+    fs.mkdir(leftChild, { recursive: true }),
+    fs.mkdir(rightChild, { recursive: true }),
+  ]);
+  await Promise.all([
+    fs.writeFile(path.join(left, 'page.yml'), '---\nname: "Left"\nslug: "left"\n---\n'),
+    fs.writeFile(path.join(right, 'page.yml'), '---\nname: "Right"\nslug: "right"\n---\n'),
+    fs.writeFile(path.join(leftChild, 'page.yml'), '---\nname: "Shared left"\nslug: "shared"\nparent: "left"\n---\n'),
+    fs.writeFile(path.join(rightChild, 'page.yml'), '---\nname: "Shared right"\nslug: "shared"\nparent: "right"\n---\n'),
+  ]);
+  await assert.rejects(buildPageHierarchy(pagesRoot, true), /Duplicate page slug 'shared'/);
+});
+
+test('page hierarchy rejects missing parents and cycles', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'invalid-pages-'));
+  const pagesRoot = path.join(tmp, 'content', 'pages');
+  const first = path.join(pagesRoot, 'first');
+  const second = path.join(pagesRoot, 'second');
+  await Promise.all([fs.mkdir(first, { recursive: true }), fs.mkdir(second, { recursive: true })]);
+  await Promise.all([
+    fs.writeFile(path.join(first, 'page.yml'), '---\nname: "First"\nslug: "first"\nparent: "second"\n---\n'),
+    fs.writeFile(path.join(second, 'page.yml'), '---\nname: "Second"\nslug: "second"\nparent: "first"\n---\n'),
+  ]);
+  await assert.rejects(buildPageHierarchy(pagesRoot, true), /Page parent cycle/);
+  await fs.writeFile(path.join(second, 'page.yml'), '---\nname: "Second"\nslug: "second"\nparent: "missing"\n---\n');
+  await assert.rejects(buildPageHierarchy(pagesRoot, true), /Parent page 'missing' does not exist/);
+});
+
 test('post write/read/delete + duplicate slugs', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'posts-'));
   const postDir = path.join(tmp, 'posts');
@@ -83,8 +118,8 @@ test('post write/read/delete + duplicate slugs', async () => {
 });
 
 test('scheduled posts become public only on or after their publish date', () => {
-  const before = Date.parse('2026-09-19T23:59:59Z');
-  const onDate = Date.parse('2026-09-20T00:00:00Z');
+  const before = new Date(2026, 8, 19, 23, 59, 59).getTime();
+  const onDate = new Date(2026, 8, 20, 0, 0, 0).getTime();
   assert.equal(effectivePostStatus('published', '2026-09-20', before), 'draft');
   assert.equal(effectivePostStatus('published', '2026-09-20', onDate), 'published');
   assert.equal(effectivePostStatus('draft', '2026-09-20', onDate), 'draft');

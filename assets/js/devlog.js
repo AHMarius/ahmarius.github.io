@@ -97,7 +97,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (count) count.textContent = `${visibleCount} of ${cards.length} ${cards.length === 1 ? "note" : "notes"}`;
     emptyState?.classList.toggle("is-visible", visibleCount === 0);
-    reset?.toggleAttribute("disabled", visibleCount === cards.length && !term);
+    const defaultsActive = !term && tagValue === "all" && technologyValue === "all" &&
+      projectValue === "all" && statusValue === "all" && (controls.sort?.value || "newest") === "newest";
+    reset?.toggleAttribute("disabled", defaultsActive);
     syncUrl();
   }
 

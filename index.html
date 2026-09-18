@@ -450,7 +450,7 @@
             </button>
 
             <button class="cv-modal-btn cv-modal-submit" type="submit">
-              Send CV Request
+              Open Email Request
             </button>
           </div>
         </form>
@@ -487,10 +487,12 @@
       const cvRequestForm = document.getElementById("cvRequestForm");
       const cvEmail = document.getElementById("cvEmail");
       const cvModalError = document.getElementById("cvModalError");
+      let cvReturnFocus = null;
 
       const cvRecipient = "hritcualex862@gmail.com";
 
       function openCvModal() {
+        cvReturnFocus = document.activeElement;
         cvModal.classList.add("active");
         cvModal.setAttribute("aria-hidden", "false");
 
@@ -506,6 +508,10 @@
         cvModal.setAttribute("aria-hidden", "true");
 
         cvModalError.textContent = "";
+        if (cvReturnFocus instanceof HTMLElement) {
+          cvReturnFocus.focus();
+        }
+        cvReturnFocus = null;
       }
 
       downloadCvBtn.addEventListener("click", openCvModal);
@@ -567,40 +573,7 @@
         closeCvModal();
       });
 
-      /* ===== THEME AND INTERACTIVE HERO ===== */
-
-      const storedTheme = localStorage.getItem("theme");
-      const initialTheme = storedTheme === "dark" ? "dark" : "light";
-      document.documentElement.dataset.theme = initialTheme;
-
-      const themeToggle = document.createElement("button");
-      themeToggle.type = "button";
-      themeToggle.className = "theme-toggle";
-      document.body.appendChild(themeToggle);
-
-      function updateThemeToggle(theme) {
-        const isDark = theme === "dark";
-        themeToggle.textContent = isDark ? "☀" : "☾";
-        themeToggle.title = isDark
-          ? "Switch to light theme"
-          : "Switch to dark theme";
-        themeToggle.setAttribute(
-          "aria-label",
-          isDark ? "Switch to light theme" : "Switch to dark theme",
-        );
-        themeToggle.setAttribute("aria-pressed", String(isDark));
-      }
-
-      updateThemeToggle(initialTheme);
-
-      themeToggle.addEventListener("click", () => {
-        const nextTheme =
-          document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-
-        document.documentElement.dataset.theme = nextTheme;
-        localStorage.setItem("theme", nextTheme);
-        updateThemeToggle(nextTheme);
-      });
+      /* ===== INTERACTIVE HERO ===== */
 
       const interactiveHero = document.querySelector(".interactive-hero");
       const reducedMotion = window.matchMedia(

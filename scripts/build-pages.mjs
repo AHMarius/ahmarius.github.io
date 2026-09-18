@@ -36,6 +36,7 @@ function pageCard(page, href, fromDepth = 0) {
       <div class="page-card-meta">
         <span>${page.postCount ?? 0} post${(page.postCount ?? 0) === 1 ? '' : 's'}</span>
         ${childCount > 0 ? `<span>${childCount} sub-page${childCount === 1 ? '' : 's'}</span>` : ''}
+        ${page.updatedDate ? `<span>Updated <time datetime="${escapeAttribute(page.updatedDate)}">${escapeHtml(page.updatedDate)}</time></span>` : ''}
       </div>
       <a class="devlog-link" href="${href}">Open page</a>
     </article>
@@ -52,6 +53,15 @@ function breadcrumb(pagesBySlug, slug) {
     current = current.parent ? pagesBySlug.get(current.parent) : null;
   }
   return crumbs;
+}
+
+function breadcrumbHtml(crumbs, linkCurrent = false) {
+  return crumbs.map((crumb, index) => {
+    const current = index === crumbs.length - 1;
+    return current && !linkCurrent
+      ? `<span aria-current="page">${escapeHtml(crumb.name)}</span>`
+      : `<a href="../${escapeAttribute(crumb.slug)}/index.html">${escapeHtml(crumb.name)}</a>`;
+  }).join(' <span class="crumb-sep" aria-hidden="true">/</span> ');
 }
 
 function pageIndexPage(hierarchy) {
@@ -79,15 +89,15 @@ function pageIndexPage(hierarchy) {
   });
 }
 
-function pageLandingPage(page, pagesBySlug, posts) {
+function pageLandingPage(page, pagesBySlug, posts, allPosts) {
   const crumbs = breadcrumb(pagesBySlug, page.slug);
-  const crumbHtml = crumbs.map((c) => `<span>${escapeHtml(c.name)}</span>`).join(' <span class="crumb-sep">/</span> ');
-  // Every page (incl. sub-pages) renders into a flat pages/<slug>/ folder at
-  // depth 1; the grandchild landing page links use the parent landing's depth.
-  const depth = 1;
+  const crumbHtml = breadcrumbHtml(crumbs);
+  // Every page (including sub-pages) renders at pages/<slug>/index.html, which
+  // is two directories below the repository root.
+  const depth = 2;
 
   const childCards = (page.children || []).map((child) => {
-    const childPosts = postsForPage(posts, child.slug);
+    const childPosts = postsForPage(allPosts, child.slug);
     return pageCard({ ...child, postCount: childPosts.length }, `../${child.slug}/index.html`, depth);
   }).join('\n');
 
@@ -119,6 +129,7 @@ function pageLandingPage(page, pagesBySlug, posts) {
       <nav class="page-breadcrumb" aria-label="Breadcrumb">${crumbHtml}</nav>
       <h1>${escapeHtml(page.name)}</h1>
       ${page.description ? `<p class="section-intro">${escapeHtml(page.description)}</p>` : ''}
+      ${page.updatedDate ? `<p class="devlog-meta">Updated <time datetime="${escapeAttribute(page.updatedDate)}">${escapeHtml(page.updatedDate)}</time></p>` : ''}
       ${heroCover}
     </header>
     <main id="main-content" class="devlog-shell">
@@ -132,7 +143,7 @@ function pageLandingPage(page, pagesBySlug, posts) {
     canonical: `https://ahmarius.github.io/pages/${page.slug}/index.html`,
     cssAssets: ['assets/css/style.css', 'assets/css/devlog.css', 'assets/css/pages.css', 'assets/css/katex.min.css'],
     activeNav: 'pages',
-    depth: 1,
+    depth,
     content,
   });
 }
@@ -181,8 +192,9 @@ function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
   const normalizedBody = post.body.replace(new RegExp(`^#\\s*${escapeForRegex(post.title)}\\s*\\n?`, 'i'), '').trim();
   const bodyRaw = rewriteAssetUrls(renderMarkdown(normalizedBody), postAssetsBase(post.pageSlug, post.slug));
   const { html: body, toc } = addToc(bodyRaw, headingsFromMarkdown(normalizedBody));
-  const crumbHtml = crumbs.map((c) => `<span>${escapeHtml(c.name)}</span>`).join(' <span class="crumb-sep">/</span> ');
-  const parentCrumb = crumbs.length > 0 ? `<a class="devlog-link" href="../${crumbs[crumbs.length - 1].slug}/index.html">← ${escapeHtml(crumbs[crumbs.length - 1].name)}</a>` : '';
+  const crumbHtml = breadcrumbHtml(crumbs, true);
+  const parentCrumb = crumbs.length > 0 ? `<a class="devlog-link" href="index.html">← ${escapeHtml(crumbs[crumbs.length - 1].name)}</a>` : '';
+  const publicUrl = `https://ahmarius.github.io/pages/${post.pageSlug}/${post.slug}.html`;
 
   const content = `
     <article class="devlog-post" id="main-content">
@@ -194,7 +206,7 @@ function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
         ${post.subtitle ? `<p class="post-subtitle">${escapeHtml(post.subtitle)}</p>` : ''}
         <div class="devlog-meta">${escapeHtml(buildReadTime(post.body))}</div>
         <div class="post-actions" aria-label="Article actions">
-          <button type="button" class="devlog-share" data-url="/devlog/${escapeAttribute(post.slug)}.html">Share</button>
+          <button type="button" class="devlog-share" data-url="/pages/${escapeAttribute(post.pageSlug)}/${escapeAttribute(post.slug)}.html">Share</button>
           <button type="button" class="post-print">Print / save PDF</button>
         </div>
         ${toc ? `${toc}\n        ` : ''}<div class="devlog-tags" style="margin-top:0.75rem;">${post.tags.map((t) => `<span class="devlog-tag">${escapeHtml(t)}</span>`).join('')}</div>
@@ -207,12 +219,21 @@ function postPagePublic(post, crumbs, pagesBySlug, seriesNav = '') {
   return pageShell({
     title: `${post.title} — Pages`,
     description: post.excerpt,
-    canonical: `https://ahmarius.github.io/devlog/${post.slug}.html`,
+    canonical: publicUrl,
     cssAssets: ['assets/css/style.css', 'assets/css/devlog.css', 'assets/css/pages.css', 'assets/css/katex.min.css'],
     activeNav: 'pages',
-    depth: 1,
+    depth: 2,
     jsAssets: ['assets/js/hero-fluid.js', 'assets/js/script.js', 'assets/js/post.js'],
-    extraHead: postHeadExtras({ ...post, page: post.pageSlug }, { cover: post.cover }),
+    extraHead: postHeadExtras(
+      { ...post, page: post.pageSlug },
+      {
+        cover: post.cover,
+        url: publicUrl,
+        sectionName: 'Pages',
+        sectionUrl: 'https://ahmarius.github.io/pages.html',
+        titleSuffix: 'Pages',
+      },
+    ),
     content,
   });
 }
@@ -257,6 +278,9 @@ export async function buildPages(opts = {}) {
   await fs.writeFile(path.join(ROOT, PUBLIC_HREF), pageIndexPage(hierarchy), 'utf8');
 
   const pagesBySlug = new Map(pages.map((p) => [p.slug, p]));
+  await Promise.all(pages.map(async (page) => {
+    page.updatedDate = await computePageUpdatedDate(page.dir);
+  }));
 
   // `pages/` and `assets/pages/` are build output, not source content.  Keep
   // them in lockstep with the current hierarchy so deleting a page (or its
@@ -294,7 +318,8 @@ export async function buildPages(opts = {}) {
           page.cover = `assets/pages/${page.slug}/${cover}`;
         }
       } catch {
-        // keep the (possibly broken) relative reference as-is
+        if (strict) throw new Error(`Page cover does not exist: ${path.relative(ROOT, src)}`);
+        page.cover = '';
       }
     }
   }
@@ -342,7 +367,7 @@ export async function buildPages(opts = {}) {
     const pagePosts = gridPosts.filter((p) => p.pageSlug === page.slug);
     const subDir = path.join(OUT_DIR, page.slug);
     await fs.mkdir(subDir, { recursive: true });
-    await fs.writeFile(path.join(subDir, 'index.html'), pageLandingPage(page, pagesBySlug, pagePosts), 'utf8');
+    await fs.writeFile(path.join(subDir, 'index.html'), pageLandingPage(page, pagesBySlug, pagePosts, gridPosts), 'utf8');
     for (const post of pagePosts) {
       await fs.writeFile(
         path.join(subDir, `${post.slug}.html`),

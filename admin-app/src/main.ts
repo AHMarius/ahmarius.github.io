@@ -1,7 +1,7 @@
 import { ContentNode, PostDoc } from "./api";
-import { Editor } from "./editor";
+import { Editor, type EditorMode } from "./editor";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { checkSyncGateway, claimPhonePairing, createPhonePairing, listSyncFiles, readSyncFile, writeSyncFile, type SyncSession } from "./sync";
+import { checkSyncGateway, claimPhonePairing, createPhonePairing, endSyncSession, listSyncFiles, readSyncFile, writeSyncFile, type SyncSession } from "./sync";
 import "./app.css";
 
 type View =
@@ -12,6 +12,8 @@ type View =
   | { kind: "allposts" }
   | { kind: "page"; slug: string }
   | { kind: "post"; page: string; slug: string }
+  | { kind: "page-editor"; slug: string }
+  | { kind: "project-editor"; slug: string }
   | { kind: "settings" };
 
 const state = {
@@ -26,6 +28,7 @@ const state = {
   editorOriginalSlug: "" as string,
   editorAssetSlug: "" as string,
   editorDirty: false,
+  dirtyContext: "post" as string,
   status: "Idle" as string,
   saving: false as boolean,
   editorKey: "" as string,
@@ -78,26 +81,80 @@ function editorActive(): boolean {
   return state.view.kind === "post" && Boolean($("#po-title")) && Boolean(state.editorSave);
 }
 
+function updateEditorActions() {
+  const active = editorActive();
+  const save = $("#save-btn") as HTMLButtonElement | null;
+  const preview = $("#preview-btn") as HTMLButtonElement | null;
+  if (save) save.disabled = !active;
+  if (preview) preview.disabled = !active;
+}
+
+function markDirty(context: string) {
+  state.editorDirty = true;
+  state.dirtyContext = context;
+  setStatus("Unsaved changes");
+}
+
 /** Drop the editor bindings when leaving the post editor, so a later publish
  * / preview / Ctrl+S can't invoke a stale save closure against removed DOM. */
 function resetEditorState() {
   resetSyncFileEditor();
+  state.editor?.destroy();
   state.editor = null;
   state.editorSave = undefined;
   state.editorOriginalSlug = "";
   state.editorAssetSlug = "";
   state.editorDirty = false;
+  state.dirtyContext = "post";
   state.editorKey = "";
   if (state.autosaveTimer) {
     clearTimeout(state.autosaveTimer);
     state.autosaveTimer = 0;
   }
   newPostSessionId = "";
+  updateEditorActions();
 }
 
 function confirmLeaveEditor(): boolean {
   if (!state.editorDirty) return true;
-  return window.confirm("This post has unsaved changes. Discard them and leave the editor?");
+  void saveRecoveryNow();
+  return window.confirm(`This ${state.dirtyContext} has unsaved changes. Discard them and leave?`);
+}
+
+function resolveThemePreference(preference = state.prefs?.theme || "system"): "dark" | "light" {
+  if (preference === "dark" || preference === "light") return preference;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+async function persistPrefs(patch: Record<string, unknown>) {
+  state.prefs = { ...state.prefs, ...patch };
+  try {
+    await call("set_prefs", { prefs: patch });
+  } catch (error) {
+    setStatus(`Could not save preferences: ${String((error as any).message || error)}`);
+  }
+}
+
+function flattenPages(nodes: ContentNode[] = state.tree): ContentNode[] {
+  return nodes.flatMap((node) => [node, ...flattenPages(node.children.filter((child) => child.type_ === "page"))]);
+}
+
+function pagePostCount(node: ContentNode): number {
+  return node.children.filter((child) => child.type_ === "post").length;
+}
+
+function pageChildCount(node: ContentNode): number {
+  return node.children.filter((child) => child.type_ === "page").length;
+}
+
+function pagePathTo(slug: string, nodes: ContentNode[] = state.tree, trail: ContentNode[] = []): ContentNode[] {
+  for (const node of nodes) {
+    const next = [...trail, node];
+    if (node.slug === slug) return next;
+    const found = pagePathTo(slug, node.children.filter((child) => child.type_ === "page"), next);
+    if (found.length) return found;
+  }
+  return [];
 }
 
 // ---------- Fire Tauri or fall back for browser dev ----------
@@ -165,14 +222,6 @@ async function renderSignIn(host: HTMLElement, onDone: () => void) {
   stopGhListeners();
   ghOnDone = onDone;
   host.className = "auth-status loading";
-  host.innerHTML = `<p class="muted">Starting GitHub sign-in… keep this window open.</p>`;
-  try {
-    await call("github_login");
-  } catch (e) {
-    host.className = "auth-status error";
-    host.innerHTML = `<p class="error-text">Could not start GitHub sign-in: ${esc(String((e as any).message || e))}</p>`;
-    return;
-  }
   host.innerHTML = `
     <div class="gh-login">
       <p class="auth-desc muted">Complete the sign-in in the browser window that opens:</p>
@@ -233,6 +282,11 @@ async function renderSignIn(host: HTMLElement, onDone: () => void) {
       stopGhListeners();
     }),
   );
+  void call("github_login").catch((e) => {
+    host.className = "auth-status error";
+    host.innerHTML = `<p class="error-text">Could not start GitHub sign-in: ${esc(String((e as any).message || e))}</p>`;
+    stopGhListeners();
+  });
 }
 
 // ---------- Autosave + crash recovery ----------
@@ -255,15 +309,20 @@ function recoveryKey(page: string, slug: string): string {
 function scheduleAutosave() {
   if (!state.editorKey || !state.editor) return;
   window.clearTimeout(state.autosaveTimer);
-  state.autosaveTimer = window.setTimeout(async () => {
-    await cell(() =>
-      call("save_recovery", {
-        key: state.editorKey,
-        content: state.editor!.getValue(),
-        metadata: recoveryMetadata(),
-      }),
-    );
+  const key = state.editorKey;
+  const editor = state.editor;
+  state.autosaveTimer = window.setTimeout(() => {
+    if (state.editorKey !== key || state.editor !== editor) return;
+    void saveRecoveryNow();
   }, 1200);
+}
+
+async function saveRecoveryNow() {
+  if (!state.editorKey || !state.editor || state.dirtyContext !== "post") return;
+  const key = state.editorKey;
+  const content = state.editor.getValue();
+  const metadata = recoveryMetadata();
+  await cell(() => call("save_recovery", { key, content, metadata }));
 }
 
 function recoveryMetadata() {
@@ -303,6 +362,7 @@ async function checkRecovery(page: string, slug: string) {
   const key = recoveryKey(page, slug);
   if (!key) return;
   const saved = await cell(() => call("load_recovery", { key }));
+  if (state.editorKey !== key || !editorActive()) return;
   if (saved == null) return;
   // Only offer recovery if it differs from what's on disk.
   const content = typeof saved === "string" ? saved : saved?.content;
@@ -337,12 +397,12 @@ async function checkRecovery(page: string, slug: string) {
 async function boot() {
   const prefs = await cell(() => call("get_prefs"));
   state.prefs = prefs || {};
-  if (prefs?.theme) {
-    document.documentElement.dataset.theme = prefs.theme;
-  } else if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
-    document.documentElement.dataset.theme = "dark";
+  state.collapsed = new Set(Array.isArray(prefs?.collapsed_nodes) ? prefs.collapsed_nodes : []);
+  applyThemeToggle(resolveThemePreference(prefs?.theme));
+  const sidebarWidth = Number(prefs?.sidebar_width);
+  if (Number.isFinite(sidebarWidth)) {
+    document.documentElement.style.setProperty("--sidebar-width", `${Math.min(520, Math.max(220, sidebarWidth))}px`);
   }
-  applyThemeToggle(document.documentElement.dataset.theme || "dark");
   await refreshTree();
   // Best-effort auto-connect: register the gh credential helper so future
   // `git push` over HTTPS picks up the stored GitHub token.
@@ -354,6 +414,12 @@ async function boot() {
     }
   })();
 }
+
+window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+  if (!state.prefs?.theme || state.prefs.theme === "system") {
+    applyThemeToggle(resolveThemePreference("system"));
+  }
+});
 
 async function refreshTree() {
   const tree = await cell(() => call("scan_content"));
@@ -384,11 +450,11 @@ app.innerHTML = `
       </nav>
       <div class="topbar-right">
         <span id="topbar-status" class="status-pill">Idle</span>
-        <button id="preview-btn" class="btn">Preview</button>
-        <button id="save-btn" class="btn primary">Save Draft</button>
+        <button id="preview-btn" class="btn" disabled>Preview</button>
+        <button id="save-btn" class="btn primary" disabled>Save Draft</button>
         <button id="publish-btn" class="btn publish">Publish</button>
         <button id="settings-btn" class="btn ghost" title="Settings">⚙</button>
-        <button id="command-btn" class="btn ghost" title="Command palette (Ctrl+Shift+K)">⌘</button>
+        <button id="command-btn" class="btn ghost" title="Command palette (Ctrl+Shift+P)">⌘</button>
       </div>
     </header>
     <div class="app-body">
@@ -399,6 +465,7 @@ app.innerHTML = `
           <button id="new-page-btn" class="btn block">+ New Page</button>
         </div>
       </aside>
+      <div id="sidebar-resizer" class="sidebar-resizer" role="separator" aria-label="Resize content navigator" aria-orientation="vertical" tabindex="0"></div>
       <button class="sidebar-scrim" type="button" aria-label="Close content navigator"></button>
       <main class="content">
         <div id="view-content"></div>
@@ -420,53 +487,99 @@ function closeMobileSidebar() {
   $("#sidebar-toggle")?.setAttribute("aria-expanded", "false");
 }
 
+function installSidebarResize() {
+  const handle = $("#sidebar-resizer") as HTMLElement | null;
+  if (!handle) return;
+  const apply = (width: number) => {
+    const clamped = Math.min(520, Math.max(220, width));
+    document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
+    return clamped;
+  };
+  handle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    const move = (next: PointerEvent) => apply(next.clientX);
+    const end = (next: PointerEvent) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      void persistPrefs({ sidebar_width: apply(next.clientX) });
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  });
+  handle.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width")) || 280;
+    const width = apply(current + (event.key === "ArrowRight" ? 16 : -16));
+    void persistPrefs({ sidebar_width: width });
+  });
+}
+
 function renderSidebar() {
   const treeEl = $("#sidebar-tree")!;
   treeEl.innerHTML = "";
-  state.tree.forEach((node) => {
+  const renderNode = (node: ContentNode): HTMLElement => {
     const collapsed = state.collapsed.has(node.id);
+    const pageChildren = node.children.filter((child) => child.type_ === "page");
+    const postChildren = node.children.filter((child) => child.type_ === "post");
+    const hasChildren = node.children.length > 0;
     const item = el("div", "tree-item");
     item.innerHTML = `
-      <div class="tree-row" data-id="${esc(node.id)}">
-        <span class="tree-caret" data-caret="${esc(node.id)}" title="${collapsed ? "Expand" : "Collapse"}">${collapsed ? "▸" : "▾"}</span>
+      <div class="tree-row" data-id="${esc(node.id)}" role="button" tabindex="0">
+        <button type="button" class="tree-caret" data-caret="${esc(node.id)}" title="${collapsed ? "Expand" : "Collapse"}" aria-expanded="${!collapsed}" ${hasChildren ? "" : "disabled"}>${hasChildren ? (collapsed ? "▸" : "▾") : ""}</button>
         <span class="tree-label">📁 ${esc(node.name)}</span>
       </div>
-      <div class="tree-children${collapsed ? "" : " open"}">
-        ${node.children
-          .map(
-            (c) =>
-              `<div class="tree-post" data-id="${esc(c.id)}"><span class="tree-dot">${c.status === "published" ? "●" : "○"}</span> ${esc(c.name)}</div>`,
-          )
-          .join("")}
-      </div>
+      <div class="tree-children${collapsed ? "" : " open"}"></div>
     `;
-    treeEl.appendChild(item);
-  });
-  treeEl.querySelectorAll(".tree-row").forEach((r: any) => {
-    r.addEventListener("click", () => {
-      if (!confirmLeaveEditor()) return;
-      const slug = (r as HTMLElement).dataset.id;
-      showPageView(slug!);
-      closeMobileSidebar();
+    const children = item.querySelector<HTMLElement>(".tree-children")!;
+    pageChildren.forEach((child) => children.appendChild(renderNode(child)));
+    postChildren.forEach((post) => {
+      const row = el("div", "tree-post");
+      row.dataset.id = post.id;
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.innerHTML = `<span class="tree-dot">${post.status === "published" ? "●" : post.status === "archived" ? "◌" : "○"}</span> ${esc(post.name)}`;
+      const open = () => {
+        if (!confirmLeaveEditor()) return;
+        showPostView(node.slug, post.slug);
+        closeMobileSidebar();
+      };
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+      children.appendChild(row);
     });
-  });
-  treeEl.querySelectorAll(".tree-post").forEach((r: any) => {
-    r.addEventListener("click", () => {
+    const pageRow = item.querySelector<HTMLElement>(".tree-row")!;
+    const openPage = () => {
       if (!confirmLeaveEditor()) return;
-      const [page, slug] = (r as HTMLElement).dataset.id!.split(":");
-      showPostView(page, slug);
+      showPageView(node.slug);
       closeMobileSidebar();
+    };
+    pageRow.addEventListener("click", openPage);
+    pageRow.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openPage();
+      }
     });
-  });
-  treeEl.querySelectorAll(".tree-caret").forEach((c: any) => {
-    c.addEventListener("click", (e: Event) => {
-      e.stopPropagation();
-      const id = (c as HTMLElement).dataset.caret!;
-      if (state.collapsed.has(id)) state.collapsed.delete(id);
-      else state.collapsed.add(id);
+    item.querySelector<HTMLElement>(".tree-caret")!.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!hasChildren) return;
+      if (state.collapsed.has(node.id)) state.collapsed.delete(node.id);
+      else state.collapsed.add(node.id);
+      void persistPrefs({ collapsed_nodes: [...state.collapsed] });
       renderSidebar();
     });
-  });
+    return item;
+  };
+  state.tree.forEach((node) => treeEl.appendChild(renderNode(node)));
 }
 
 // ---------- Views ----------
@@ -479,11 +592,11 @@ function showPagesView() {
   v.innerHTML = "";
   v.appendChild(el("h1", "page-title", "Pages"));
   const grid = el("div", "cards-grid");
-  state.tree.forEach((node) => {
+  flattenPages().forEach((node) => {
     const card = el("article", "card page-card-c");
     card.innerHTML = `
       <div class="card-head"><span class="card-avatar"></span><h3>${esc(node.name)}${node.type_ === "page" && node.children.length === 0 ? "" : ""}${isDevlogPage(node) ? ' <span class="pill devlog">devlog</span>' : ""}</h3></div>
-      <p class="card-desc">${esc(String(node.children.length))} posts</p>
+      <p class="card-desc">${pagePostCount(node)} posts · ${pageChildCount(node)} sub-pages${node.updated_date ? ` · ${esc(humanDate(node.updated_date))}` : ""}</p>
       <div class="card-actions">
         <button data-open-page="${esc(node.slug)}" class="btn">Open</button>
         <button data-edit-page="${esc(node.slug)}" class="btn">Edit</button>
@@ -562,23 +675,41 @@ function showSyncView() {
   }
   v.innerHTML = `<h1 class="page-title">Phone Sync</h1><p class="muted">Loading canonical content files…</p>`;
   void cell(async () => {
-    const editable = (await listSyncFiles(gateway, state.syncSession!.token))
+    const listing = await listSyncFiles(gateway, state.syncSession!.token);
+    const editable = listing.files
       .filter((file) => /\.(?:md|ya?ml|json)$/i.test(file.path))
       .sort((a, b) => a.path.localeCompare(b.path));
     if (state.view.kind !== "sync") return;
     v.innerHTML = `
       <h1 class="page-title">Phone Sync <button id="sync-disconnect" class="btn">End session</button></h1>
+      <p class="muted">Session expires ${esc(new Date(state.syncSession!.expires_at).toLocaleString())}.</p>
+      ${listing.truncated ? '<p class="error-text">GitHub truncated the repository tree response; this file list may be incomplete.</p>' : ""}
       <p class="muted">Edits commit directly to the configured GitHub branch. A conflicting remote edit is never overwritten silently.</p>
       <div class="sync-editor-layout">
         <div class="sync-file-list">${editable.map((file) => `<button class="sync-file" data-sync-file="${esc(file.path)}">${esc(file.path.replace(/^content\//, ""))}</button>`).join("") || '<p class="muted">No editable content found.</p>'}</div>
         <div id="sync-document" class="sync-document"><p class="muted">Choose a content file to edit.</p></div>
       </div>`;
-    $("#sync-disconnect", v)!.addEventListener("click", () => {
-      state.syncSession = null;
-      showSyncView();
+    $("#sync-disconnect", v)!.addEventListener("click", async () => {
+      if (!confirmLeaveEditor()) return;
+      const button = $("#sync-disconnect", v) as HTMLButtonElement;
+      button.disabled = true;
+      button.textContent = "Ending…";
+      try {
+        await endSyncSession(gateway, state.syncSession!.token);
+        state.syncSession = null;
+        showSyncView();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "End session";
+        setStatus(`Could not revoke sync session: ${String((error as any).message || error)}`);
+      }
     });
     $$('[data-sync-file]', v).forEach((button) => {
-      button.addEventListener("click", () => void openSyncFile((button as HTMLElement).dataset.syncFile!));
+      button.addEventListener("click", () => {
+        if (!confirmLeaveEditor()) return;
+        state.editorDirty = false;
+        void openSyncFile((button as HTMLElement).dataset.syncFile!);
+      });
     });
   });
 }
@@ -595,6 +726,7 @@ async function openSyncFile(path: string) {
     host.innerHTML = `<div class="sync-document-head"><div><strong>${esc(path)}</strong><p class="muted small">Full Markdown and LaTeX preview · local recovery stays on this device</p></div><button id="sync-save" class="btn primary">Save to GitHub</button></div><p id="sync-save-msg" class="muted"></p>`;
     syncFileEditor = new Editor(() => {
       if (syncFileEditor) localStorage.setItem(localKey, syncFileEditor.getValue());
+      markDirty("synced file");
       const message = $("#sync-save-msg", host) as HTMLElement | null;
       if (message) {
         message.textContent = "Unsaved changes stored on this device.";
@@ -604,19 +736,33 @@ async function openSyncFile(path: string) {
     host.appendChild(syncFileEditor.getElement());
     const restore = Boolean(recovered && recovered !== doc.content && window.confirm("Restore the unsaved local version of this file?"));
     syncFileEditor.setBody(restore && recovered ? recovered : doc.content);
-    syncFileEditor.setMode(window.innerWidth <= 820 ? "source" : "split");
-    if (recovered && !restore) localStorage.removeItem(localKey);
+    state.editorDirty = false;
+    state.dirtyContext = "synced file";
+    const markdown = /\.md$/i.test(path);
+    syncFileEditor.setMode(markdown && window.innerWidth > 820 ? "split" : "source", false);
+    if (recovered && !restore && window.confirm("Permanently discard the unsaved local copy?")) {
+      localStorage.removeItem(localKey);
+    }
     $("#sync-save", host)!.addEventListener("click", async () => {
       const message = $("#sync-save-msg", host) as HTMLElement;
+      const button = $("#sync-save", host) as HTMLButtonElement;
+      button.disabled = true;
+      button.textContent = "Saving…";
       try {
-        const saved = await writeSyncFile(syncGatewayUrl(), state.syncSession!.token, path, doc.sha, syncFileEditor!.getValue());
+        const content = syncFileEditor!.getValue();
+        if (/\.json$/i.test(path)) JSON.parse(content);
+        const saved = await writeSyncFile(syncGatewayUrl(), state.syncSession!.token, path, doc.sha, content);
         doc.sha = saved.sha;
         localStorage.removeItem(localKey);
+        state.editorDirty = false;
         message.textContent = "Saved to GitHub source. Run Publish on the desktop to rebuild and deploy the site.";
         message.className = "success-text";
       } catch (error) {
         message.textContent = String((error as any).message || error);
         message.className = "error-text";
+      } finally {
+        button.disabled = false;
+        button.textContent = "Save to GitHub";
       }
     });
   } catch (error) {
@@ -691,7 +837,7 @@ function showDashboard() {
           : '<div class="empty-state compact"><h3>No deleted items</h3><p>Deleted content stays here until you empty the trash.</p></div>'
         }</div>${trash.length ? '<div class="card-actions dashboard-trash-actions"><button id="dash-empty-trash" class="btn danger">Empty trash</button></div>' : ""}
       </section>`;
-    $("#dash-new-post", v)!.addEventListener("click", () => openPostEditor(promptPageForPost(), null));
+    $("#dash-new-post", v)!.addEventListener("click", openNewPostFromPrompt);
     $("#dash-all-posts", v)!.addEventListener("click", showAllPostsView);
     $("#dash-publish", v)!.addEventListener("click", openPublish);
     $("#dash-recovery", v)?.addEventListener("click", openRecoveryDashboard);
@@ -1033,7 +1179,7 @@ function showProjectView(slug: string) {
 
 function openProjectEditor(slug?: string | null) {
   resetEditorState();
-  state.view = { kind: "page", slug: slug || "" };
+  state.view = { kind: "project-editor", slug: slug || "" };
   const v = viewContent();
   v.innerHTML = "";
   v.appendChild(el("h1", "page-title", slug ? "Edit Project" : "New Project"));
@@ -1082,6 +1228,8 @@ function openProjectEditor(slug?: string | null) {
       );
     });
   }
+  form.addEventListener("input", () => markDirty("project"));
+  form.addEventListener("change", () => markDirty("project"));
   $("#pr-save")!.addEventListener("click", async (e: Event) => {
     e.preventDefault();
     const name = ($("#pr-name") as HTMLInputElement).value.trim();
@@ -1097,6 +1245,7 @@ function openProjectEditor(slug?: string | null) {
     try {
       if (slug) await call("update_project", { project });
       else await call("create_project", { project });
+      state.editorDirty = false;
       await refreshProjects();
       showProjectsView();
     } catch (err) {
@@ -1106,7 +1255,7 @@ function openProjectEditor(slug?: string | null) {
 }
 
 // ---------- All Posts (filter/sort + heatmap + on-this-day) ----------
-const ap = { q: "", status: "", page: "", tag: "", sort: "updated-desc" };
+const ap = { q: "", status: "", page: "", tag: "", technology: "", project: "", sort: "updated-desc" };
 
 function showAllPostsView() {
   resetEditorState();
@@ -1116,10 +1265,12 @@ function showAllPostsView() {
   v.appendChild(el("h1", "page-title", "All Posts"));
   const tools = el("div", "ap-tools");
   tools.innerHTML = `
-    <input id="ap-search" type="search" placeholder="Search…" />
+    <input id="ap-search" type="search" placeholder="Search title, body, metadata…" value="${esc(ap.q)}" />
     <select id="ap-status"></select>
     <select id="ap-page"></select>
     <select id="ap-tag"></select>
+    <select id="ap-technology"></select>
+    <select id="ap-project"></select>
     <select id="ap-sort">
       <option value="updated-desc">Updated (newest)</option>
       <option value="updated-asc">Updated (oldest)</option>
@@ -1149,7 +1300,7 @@ function showAllPostsView() {
     ap.q = ((e.target as HTMLInputElement).value || "").trim().toLowerCase();
     renderAllPosts();
   });
-  for (const sel of ["#ap-status", "#ap-page", "#ap-tag", "#ap-sort"]) {
+  for (const sel of ["#ap-status", "#ap-page", "#ap-tag", "#ap-technology", "#ap-project", "#ap-sort"]) {
     ($(sel, v) as HTMLSelectElement).addEventListener("change", (e: Event) => {
       const field = (sel.replace("#ap-", "") as "status") || "status";
       ap[field as keyof typeof ap] = (e.target as HTMLSelectElement).value as never;
@@ -1162,6 +1313,8 @@ function apPopulateSelects() {
   const statuses = Array.from(new Set(state.posts.map((p: any) => p.status).filter(Boolean))).sort();
   const pages = Array.from(new Set(state.posts.map((p: any) => p.page).filter(Boolean))).sort();
   const tags = Array.from(new Set(state.posts.flatMap((p: any) => p.tags || []))).sort();
+  const technologies = Array.from(new Set(state.posts.flatMap((p: any) => p.technologies || []))).sort();
+  const projects = Array.from(new Set(state.posts.map((p: any) => p.project).filter(Boolean))).sort();
   const fill = (sel: string, allLabel: string, values: string[]) => {
     const s = $(sel) as HTMLSelectElement;
     if (!s) return;
@@ -1173,6 +1326,8 @@ function apPopulateSelects() {
   fill("#ap-status", "All statuses", statuses);
   fill("#ap-page", "All pages", pages);
   fill("#ap-tag", "All tags", tags);
+  fill("#ap-technology", "All technologies", technologies);
+  fill("#ap-project", "All projects", projects);
   const sortSel = $("#ap-sort") as HTMLSelectElement;
   if (sortSel) sortSel.value = ap.sort;
 }
@@ -1195,10 +1350,12 @@ function renderAllPosts() {
     const row = el("div", "row");
     row.innerHTML = `
       <div class="row-main"><strong>${esc(p.title)}</strong><span class="muted">${esc(p.page)}</span>
-        <span class="pill ${esc(p.status)}">${esc(p.status)}</span>${scheduledChip}${p.featured ? '<span class="pill featured">★</span>' : ""}${seriesChip}</div>
+        <span class="pill ${esc(p.status)}">${esc(p.status)}</span>${scheduledChip}${p.featured ? '<span class="pill featured">★</span>' : ""}${seriesChip}
+        <span class="row-tags">${(p.tags || []).map((tag: string) => `<span class="pill">${esc(tag)}</span>`).join("")}</span></div>
       <div class="row-meta">${esc(humanDate(p.updated_date))}</div>
       <div class="row-actions">
         <button data-edit="${esc(p.page)}|${esc(p.slug)}" class="btn">Edit</button>
+        <a href="https://ahmarius.github.io/devlog/${encodeURIComponent(p.slug)}.html" target="_blank" rel="noopener" class="btn">Open public</a>
         <button data-del="${esc(p.page)}|${esc(p.slug)}" class="btn danger">Delete</button>
       </div>
     `;
@@ -1225,8 +1382,11 @@ function apFilter(list: any[]) {
     if (ap.status && p.status !== ap.status) return false;
     if (ap.page && p.page !== ap.page) return false;
     if (ap.tag && !(p.tags || []).includes(ap.tag)) return false;
+    if (ap.technology && !(p.technologies || []).includes(ap.technology)) return false;
+    if (ap.project && p.project !== ap.project) return false;
     if (ap.q) {
-      const hay = `${p.title} ${p.excerpt || ""} ${(p.tags || []).join(" ")} ${p.series || ""} ${p.project || ""}`.toLowerCase();
+      const page = flattenPages().find((candidate) => candidate.slug === p.page);
+      const hay = `${p.title} ${p.excerpt || ""} ${p.body || ""} ${(p.tags || []).join(" ")} ${(p.technologies || []).join(" ")} ${p.series || ""} ${p.project || ""} ${page?.name || ""} ${page?.description || ""}`.toLowerCase();
       if (!hay.includes(ap.q)) return false;
     }
     return true;
@@ -1390,13 +1550,36 @@ async function deletePost(page: string, slug: string) {
 async function showPageView(slug: string) {
   resetEditorState();
   state.view = { kind: "page", slug };
+  void persistPrefs({ last_opened: `page:${slug}` });
   const v = viewContent();
   v.innerHTML = "";
   await cell(async () => {
     const doc = await call("read_page", { slug });
     if (!doc) return;
+    const path = pagePathTo(slug);
+    if (path.length > 1) {
+      const breadcrumbs = el("nav", "breadcrumbs");
+      breadcrumbs.setAttribute("aria-label", "Page hierarchy");
+      path.forEach((page, index) => {
+        const link = el("button", "breadcrumb-link", page.name) as HTMLButtonElement;
+        link.type = "button";
+        link.disabled = index === path.length - 1;
+        if (!link.disabled) link.addEventListener("click", () => showPageView(page.slug));
+        breadcrumbs.append(link);
+      });
+      v.appendChild(breadcrumbs);
+    }
     v.appendChild(el("h1", "page-title", doc.name || slug));
     if (doc.description) v.appendChild(el("p", "muted", doc.description));
+    const currentNode = path.at(-1);
+    if (currentNode?.updated_date) v.appendChild(el("p", "muted", humanDate(currentNode.updated_date)));
+    if (doc.cover) {
+      const cover = document.createElement("img");
+      cover.className = "page-detail-cover";
+      cover.alt = "";
+      cover.src = doc.cover.startsWith("assets/") ? `/${doc.cover}` : doc.cover;
+      v.appendChild(cover);
+    }
     const actions = el("div", "card-actions");
     const newPost = el("button", "btn primary", "+ New Post");
     const newSub = el("button", "btn", "+ New Sub-page");
@@ -1411,6 +1594,14 @@ async function showPageView(slug: string) {
     const posts = await call("list_posts");
     const mine = (posts || []).filter((p: any) => p.page === slug);
     const list = el("div", "rows");
+    const subpages = currentNode?.children.filter((child) => child.type_ === "page") || [];
+    subpages.forEach((page) => {
+      const row = el("div", "row subpage-row");
+      row.innerHTML = `<div class="row-main"><strong>📁 ${esc(page.name)}</strong><span class="muted">${pagePostCount(page)} posts · ${pageChildCount(page)} sub-pages</span></div>
+        <div class="row-meta">${esc(humanDate(page.updated_date))}</div>
+        <div class="row-actions"><button data-open-subpage="${esc(page.slug)}" class="btn">Open</button></div>`;
+      list.appendChild(row);
+    });
     mine.forEach((p: any) => {
       const seriesChip = p.series
         ? `<span class="pill series">${esc(p.series)}${p.part ? ` · #${p.part}` : ""}</span>`
@@ -1422,8 +1613,11 @@ async function showPageView(slug: string) {
         <button data-del="${esc(p.slug)}" class="btn danger">Delete</button></div>`;
       list.appendChild(row);
     });
-    if (!mine.length) list.appendChild(emptyState("This page has no posts yet.", "Create your first post."));
+    if (!mine.length && !subpages.length) list.appendChild(emptyState("This page has no posts or sub-pages yet.", "Create the first item."));
     v.appendChild(list);
+    list.querySelectorAll("[data-open-subpage]").forEach((button) => {
+      button.addEventListener("click", () => showPageView((button as HTMLElement).dataset.openSubpage!));
+    });
     list.querySelectorAll("[data-edit]").forEach((b) => {
       b.addEventListener("click", () => showPostView(slug, (b as HTMLElement).dataset["edit"]!));
     });
@@ -1437,7 +1631,8 @@ async function showPageView(slug: string) {
 
 // ---------- Page Editor ----------
 function openPageEditor(slug?: string | null, parent?: string | null) {
-  state.editor?.setStatus(state.status);
+  resetEditorState();
+  state.view = { kind: "page-editor", slug: slug || "" };
   const v = viewContent();
   v.innerHTML = "";
   v.appendChild(el("h1", "page-title", slug ? `Edit Page` : "New Page"));
@@ -1455,7 +1650,7 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     </label>
     <label>Devlog repo (pull commits from) <input id="pe-devlog-repo" placeholder="/abs/path/to/project-repo" /></label>
     <label>Order <input id="pe-order" type="number" placeholder="100" /></label>
-    <label>Parent ${parent != null ? `<span class="muted">(${parent})</span>` : ""}<input id="pe-parent" value="${esc(parent || "")}" placeholder="parent slug or empty" /></label>
+    <label>Parent <select id="pe-parent"><option value="">No parent (top level)</option></select></label>
     <button id="pe-save" class="btn primary">Save</button>
   `;
   v.appendChild(form);
@@ -1470,12 +1665,22 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
       return { page: sl, slug: sl };
     },
   );
+  const populateParents = () => {
+    const select = $("#pe-parent") as HTMLSelectElement;
+    const current = select.value || parent || "";
+    const options = flattenPages()
+      .filter((page) => page.slug !== slug)
+      .map((page) => `<option value="${esc(page.slug)}">${esc(`${"— ".repeat(Math.max(0, pagePathTo(page.slug).length - 1))}${page.name}`)}</option>`)
+      .join("");
+    select.innerHTML = `<option value="">No parent (top level)</option>${options}`;
+    select.value = current;
+  };
+  populateParents();
   if (slug) {
     cell(async () => {
       const doc = await call("read_page", { slug });
       ($("#pe-name") as HTMLInputElement).value = doc?.name || "";
       ($("#pe-slug") as HTMLInputElement).value = doc?.slug || "";
-      ($("#pe-slug") as HTMLInputElement).readOnly = true;
       ($("#pe-desc") as HTMLTextAreaElement).value = doc?.description || "";
       ($("#pe-cover") as HTMLInputElement).value = doc?.cover || "";
       await showCoverPreview(
@@ -1490,6 +1695,8 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
   } else if (parent) {
     ($("#pe-parent") as HTMLInputElement).value = parent;
   }
+  form.addEventListener("input", () => markDirty("page"));
+  form.addEventListener("change", () => markDirty("page"));
   $("#pe-save")!.addEventListener("click", async (e: Event) => {
     e.preventDefault();
     const name = ($("#pe-name") as HTMLInputElement).value.trim();
@@ -1502,6 +1709,7 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     try {
       if (!name) throw new Error("Page name must not be empty.");
       await call(slug ? "update_page" : "create_page", {
+        ...(slug ? { originalSlug: slug } : {}),
         page: {
           name,
           slug: sl,
@@ -1513,10 +1721,10 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
           devlog_repo: devlogRepo,
         },
       });
+      state.editorDirty = false;
       setStatus(slug ? `Saved page ${sl}` : `Created page ${sl}`);
       await refreshTree();
-      if (slug) showPageView(sl);
-      else showPagesView();
+      showPageView(sl);
     } catch (err) {
       setStatus(String((err as any).message || err));
     }
@@ -1535,8 +1743,7 @@ const DEVLOG_TEMPLATE = `## What I did today
 const openEditor = (page: string) => {
   const e = new Editor(
     () => {
-      state.editorDirty = true;
-      state.editor?.setStatus("Unsaved changes");
+      markDirty("post");
       scheduleAutosave();
       updateEditorInsights();
     },
@@ -1548,6 +1755,9 @@ const openEditor = (page: string) => {
         postSlug: state.editorAssetSlug || targetSlugFor(),
         assetPath: relPath,
       }),
+      modeChanged: (mode) => {
+        void persistPrefs({ last_editor_mode: mode });
+      },
     },
   );
   state.editor = e;
@@ -1695,7 +1905,14 @@ function updateEditorInsights() {
 }
 
 function openPostEditor(page: string, post: PostDoc | null) {
+  resetEditorState();
+  if (!page || !flattenPages().some((candidate) => candidate.slug === page)) {
+    setStatus("Create or select a page before creating a post.");
+    showPagesView();
+    return;
+  }
   state.view = { kind: "post", page, slug: post?.slug || "" };
+  void persistPrefs({ last_opened: post ? `post:${page}:${post.slug}` : `page:${page}`, default_page: page });
   newPostSessionId = post ? "" : sessionId();
   state.editorKey = recoveryKey(page, post?.slug || "");
   state.editorOriginalSlug = post?.slug || "";
@@ -1711,7 +1928,7 @@ function openPostEditor(page: string, post: PostDoc | null) {
     <div class="prop-grid">
       <label>Title <input id="po-title" required /></label>
       <label>Slug <input id="po-slug" /></label>
-      <label>Status <select id="po-status"><option>draft</option><option>published</option></select></label>
+      <label>Status <select id="po-status"><option>draft</option><option>published</option><option>archived</option></select></label>
       <label>Page <input id="po-page" value="${esc(page)}" readonly /></label>
       <label>Date <input id="po-date" type="date" /></label>
       <label>Publish on <input id="po-publish-at" type="date" /><span class="field-help">Optional; keep status Published, then run Publish on or after this date.</span></label>
@@ -1741,6 +1958,11 @@ function openPostEditor(page: string, post: PostDoc | null) {
     <aside id="po-insights" class="editor-insights" aria-live="polite"></aside>
   `;
   v.append(meta, openEditor(page).getElement());
+  const preferredMode = state.prefs?.last_editor_mode as EditorMode | undefined;
+  state.editor?.setMode(
+    preferredMode && ["source", "split", "preview"].includes(preferredMode) ? preferredMode : "split",
+    false,
+  );
   wireCoverField(
     v,
     "po-cover",
@@ -1775,8 +1997,9 @@ function openPostEditor(page: string, post: PostDoc | null) {
     ($("#po-date") as HTMLInputElement).value = new Date().toISOString().slice(0, 10);
     ($("#po-status") as HTMLSelectElement).value = prefsDefaultStatus();
     // Devlog pages open with a ready-made skeleton so new entries start faster.
+    const editorKey = state.editorKey;
     void pageDocFor(page).then((doc) => {
-      if (doc?.kind === "devlog" && !state.editor!.getValue().trim()) {
+      if (state.editorKey === editorKey && doc?.kind === "devlog" && !state.editor!.getValue().trim()) {
         state.editor!.setBody(DEVLOG_TEMPLATE);
         state.editor?.setStatus("Devlog template ready");
       }
@@ -1785,6 +2008,8 @@ function openPostEditor(page: string, post: PostDoc | null) {
   bindPostSave(page);
   populateProjectSelect();
   state.editorDirty = false;
+  state.dirtyContext = "post";
+  updateEditorActions();
   state.editor?.setStatus("Saved");
   checkRecovery(page, post?.slug || "");
   updateSeriesChip();
@@ -1792,14 +2017,12 @@ function openPostEditor(page: string, post: PostDoc | null) {
   $("#po-part")!.addEventListener("input", updateSeriesChip);
   $$(".props-panel input, .props-panel textarea, .props-panel select", v).forEach((field) => {
     field.addEventListener("input", () => {
-      state.editorDirty = true;
-      state.editor?.setStatus("Unsaved changes");
+      markDirty("post");
       scheduleAutosave();
       updateEditorInsights();
     });
     field.addEventListener("change", () => {
-      state.editorDirty = true;
-      state.editor?.setStatus("Unsaved changes");
+      markDirty("post");
       scheduleAutosave();
       updateEditorInsights();
     });
@@ -1807,6 +2030,10 @@ function openPostEditor(page: string, post: PostDoc | null) {
   $("#shot-btn")!.onclick = () => cell(() => takeScreenshot(page));
   $("#pull-commits-btn")!.onclick = () => cell(() => pullCommits(page));
   $("#export-btn")!.onclick = () => cell(async () => {
+    if (state.editorSave && !(await state.editorSave())) {
+      setStatus("Save the post successfully before exporting it.");
+      return;
+    }
     const title = ($("#po-title") as HTMLInputElement).value.trim();
     const slug = ($("#po-slug") as HTMLInputElement).value.trim() || slugify(title) || "untitled";
     const exp = await call("export_post", { pageSlug: page, postSlug: slug });
@@ -1827,6 +2054,8 @@ function openPostEditor(page: string, post: PostDoc | null) {
     }
     if (ai.tags?.length) ($("#po-tags") as HTMLInputElement).value = ai.tags.join(", ");
     if (ai.technologies?.length) ($("#po-tech") as HTMLInputElement).value = ai.technologies.join(", ");
+    markDirty("post");
+    scheduleAutosave();
     state.editor?.setStatus("Suggested metadata applied — review before saving");
     setStatus("Metadata suggested");
     updateEditorInsights();
@@ -1842,8 +2071,10 @@ function populateProjectSelect() {
   const sel = $("#po-project") as HTMLSelectElement;
   if (!sel) return;
   const current = sel.value;
+  const editorKey = state.editorKey;
   cell(async () => {
     const projects = await refreshProjects();
+    if (state.editorKey !== editorKey || !sel.isConnected) return;
     const names = projects.map((p: any) => p.slug);
     if (current && !names.includes(current)) {
       names.unshift(current);
@@ -1915,8 +2146,7 @@ function bindPostSave(page: string) {
     }
   };
   state.editorSave = save;
-  $("#save-btn")!.onclick = () => cell(save);
-  $("#preview-btn")!.onclick = () => cell(() => doPreview());
+  updateEditorActions();
 }
 
 function splitChips(v: string) {
@@ -1965,7 +2195,7 @@ async function openCommandPalette() {
   const actions: PaletteAction[] = [
     { label: "Dashboard", detail: "Workspace overview", keywords: "home overview", run: showDashboard },
     { label: "All posts", detail: "Filter and review content", keywords: "content writing", run: showAllPostsView },
-    { label: "New post", detail: "Create a draft", keywords: "write create", run: () => openPostEditor(promptPageForPost(), null) },
+    { label: "New post", detail: "Create a draft", keywords: "write create", run: openNewPostFromPrompt },
     { label: "Pages", detail: "Manage site sections", keywords: "hubs sections", run: showPagesView },
     { label: "Projects", detail: "Manage portfolio projects", keywords: "portfolio", run: showProjectsView },
     { label: "Build preview", detail: "Generate a local preview", keywords: "build site", run: () => void cell(doPreview) },
@@ -1989,7 +2219,7 @@ async function openCommandPalette() {
   overlay.innerHTML = `<div class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette">
     <div class="command-search-row"><span aria-hidden="true">⌕</span><input id="command-search" type="search" placeholder="Search actions, pages, and posts…" autocomplete="off" /><kbd>Esc</kbd></div>
     <div id="command-results" class="command-results" role="listbox"></div>
-    <div class="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> open</span><span>Ctrl+Shift+K</span></div>
+    <div class="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> open</span><span>Ctrl+Shift+P</span></div>
   </div>`;
   document.body.appendChild(overlay);
   const input = $("#command-search", overlay) as HTMLInputElement;
@@ -2039,7 +2269,7 @@ function installShortcuts() {
   document.addEventListener("keydown", (e) => {
     const mod = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
-    if (mod && e.shiftKey && key === "k") {
+    if (mod && e.shiftKey && key === "p") {
       e.preventDefault();
       void openCommandPalette();
       return;
@@ -2049,7 +2279,7 @@ function installShortcuts() {
       if (state.editorSave && editorActive()) void cell(state.editorSave);
       return;
     }
-    if (mod && e.shiftKey && key === "p") {
+    if (mod && e.altKey && key === "p") {
       e.preventDefault();
       openPublish();
       return;
@@ -2069,6 +2299,12 @@ function installShortcuts() {
       } else if (key === "k") {
         e.preventDefault();
         state.editor.command("Link");
+      } else if (key === "u") {
+        e.preventDefault();
+        state.editor.command("U");
+      } else if (e.shiftKey && key === "z") {
+        e.preventDefault();
+        state.editor.command("Redo");
       }
     }
   });
@@ -2206,7 +2442,7 @@ function openPublish() {
       $("#pub-cancel-staged", overlay)!.onclick = () => overlay.remove();
       $("#pub-unstage", overlay)!.onclick = async () => {
         try {
-          await cell(() => call("git_unstage", { paths: [] }));
+          await call("git_unstage", { paths: [] });
           body.innerHTML = `<p class="muted">Unstaged. Re-checking…</p>`;
           overlay.remove();
           openPublish();
@@ -2216,8 +2452,14 @@ function openPublish() {
       };
       return;
     }
-    const auth = await cell(() => call("git_auth_status"));
-    if (auth && !auth.authenticated) {
+    let auth;
+    try {
+      auth = await call("git_auth_status");
+    } catch (error) {
+      body.innerHTML = `<p class="error-text">Could not verify GitHub authentication.</p><pre class="diffbox">${esc(String((error as any).message || error))}</pre>`;
+      return;
+    }
+    if (!auth?.authenticated) {
       body.innerHTML = `<p class="error-text">Not signed in to GitHub.</p>
         <p class="muted">${auth.gh_installed ? "Use the button below to sign in in your browser (GitHub CLI device flow)." : "GitHub CLI (<code>gh</code>) not installed — install it or configure Git credentials for the remote."}</p>
         ${auth.error ? `<pre class="diffbox diff-big">${esc(String(auth.error).slice(0, 300))}</pre>` : ""}
@@ -2275,7 +2517,7 @@ function openPublish() {
       pullBtn2.disabled = true;
       pullBtn2.textContent = "Pulling…";
       try {
-        const out = await cell(() => call("git_pull", { strategy: "rebase" }));
+        const out = await call("git_pull", { strategy: "rebase" });
         body.innerHTML = `<p class="success-text">Pulled latest changes.</p><pre class="diffbox">${esc(String(out ?? "ok"))}</pre>
           <div class="modal-actions"><button id="pub-again" class="btn publish">Re-check</button></div>`;
         $("#pub-again", overlay)!.onclick = () => {
@@ -2474,8 +2716,31 @@ function applyThemeToggle(theme: string) {
 
 // ---------- PDF to post ----------
 function promptPageForPost(): string {
-  const promptVal = window.prompt("Page slug to publish this post into (or leave empty for the first page):")?.trim();
-  return promptVal || state.tree[0]?.slug || "";
+  const pages = flattenPages();
+  if (!pages.length) {
+    window.alert("Create a page before creating a post.");
+    openPageEditor();
+    return "";
+  }
+  const preferred = pages.some((page) => page.slug === state.prefs?.default_page)
+    ? state.prefs.default_page
+    : pages[0].slug;
+  const promptVal = window.prompt(
+    `Choose a page slug:\n\n${pages.map((page) => `${page.slug} — ${page.name}`).join("\n")}`,
+    preferred,
+  );
+  if (promptVal == null) return "";
+  const selected = promptVal.trim();
+  if (!pages.some((page) => page.slug === selected)) {
+    window.alert(`No page named "${selected}" exists. Choose one of the listed page slugs.`);
+    return "";
+  }
+  return selected;
+}
+
+function openNewPostFromPrompt() {
+  const page = promptPageForPost();
+  if (page) openPostEditor(page, null);
 }
 
 async function newPostFromPdf() {
@@ -2483,11 +2748,15 @@ async function newPostFromPdf() {
   if (!path) return;
   const pdf = await cell(() => call("import_pdf", { sourcePath: path }));
   if (!pdf) return;
+  if (pdf.is_image_only && !window.confirm("This PDF has no extractable text. Create an empty draft anyway?")) return;
   const page = promptPageForPost();
+  if (!page) return;
   openPostEditor(page, null);
   ($("#po-title") as HTMLInputElement).value = pdf.title || "Untitled";
   const lines = (pdf.text || "").trim().split("\n");
-  state.editor!.setBody(lines.slice(0, 250).join("\n"));
+  state.editor!.setBody(lines.join("\n"));
+  markDirty("post");
+  scheduleAutosave();
   state.editor?.setStatus(`Imported PDF — review before saving`);
   setStatus(pdf.is_image_only
     ? `No extractable text in this PDF (${pdf.page_count ?? "?"} pages).`
@@ -2645,7 +2914,10 @@ function showSettings() {
       <select id="set-theme"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select>
     </label>
     <label>Default post status
-      <select id="set-status"><option>draft</option><option>published</option></select>
+      <select id="set-status"><option>draft</option><option>published</option><option>archived</option></select>
+    </label>
+    <label>Default page for new posts
+      <select id="set-default-page"><option value="">First page</option>${flattenPages().map((page) => `<option value="${esc(page.slug)}">${esc(page.name)} (${esc(page.slug)})</option>`).join("")}</select>
     </label>
     <button id="set-save" class="btn primary">Save Settings</button>
     <p id="set-msg" class="muted"></p>
@@ -2654,6 +2926,7 @@ function showSettings() {
   v.appendChild(form);
   ($("#set-theme") as HTMLSelectElement).value = state.prefs?.theme || "system";
   ($("#set-status") as HTMLSelectElement).value = state.prefs?.default_status || "draft";
+  ($("#set-default-page") as HTMLSelectElement).value = state.prefs?.default_page || "";
   ($("#set-publish-mode") as HTMLSelectElement).value = state.prefs?.publish_mode || "publish";
   ($("#set-syndicate") as HTMLSelectElement).value = state.prefs?.settings?.syndicate_via || "none";
   cell(async () => {
@@ -2702,13 +2975,25 @@ function showSettings() {
       message.className = "error-text";
     }
   };
+  form.addEventListener("input", () => markDirty("settings"));
+  form.addEventListener("change", () => markDirty("settings"));
   $("#set-save")!.onclick = async () => {
     const repo = ($("#set-repo") as HTMLInputElement).value.trim();
     if (repo) {
-      const check = await cell(() => call("check_repo", { repoPath: repo }));
-      if (check && !check.is_repo) {
-        ($("#set-msg") as HTMLElement).textContent = "Warning: folder is not a Git repository.";
+      let check;
+      try {
+        check = await call("check_repo", { repoPath: repo });
+      } catch (error) {
+        ($("#set-msg") as HTMLElement).textContent = `Could not validate repository: ${String((error as any).message || error)}`;
         ($("#set-msg") as HTMLElement).className = "error-text";
+        return;
+      }
+      if (!check?.is_repo || !check?.looks_like_site) {
+        ($("#set-msg") as HTMLElement).textContent = !check?.is_repo
+          ? "This folder is not a Git repository. Settings were not saved."
+          : "This repository does not contain the expected site package, content, and assets folders.";
+        ($("#set-msg") as HTMLElement).className = "error-text";
+        return;
       }
     }
     const prefs = {
@@ -2716,6 +3001,7 @@ function showSettings() {
       devlog_repo: ($("#set-devlog-repo") as HTMLInputElement).value.trim() || null,
       theme: ($("#set-theme") as HTMLSelectElement).value,
       default_status: ($("#set-status") as HTMLSelectElement).value,
+      default_page: ($("#set-default-page") as HTMLSelectElement).value || null,
       publish_mode: ($("#set-publish-mode") as HTMLSelectElement).value,
       settings: {
         deploy_hook_url: ($("#set-hook") as HTMLInputElement).value.trim() || null,
@@ -2730,9 +3016,17 @@ function showSettings() {
     // Merge over current prefs so never-rendered fields (window state, editor
     // mode, sidebar width, …) are preserved locally and on disk.
     state.prefs = { ...state.prefs, ...prefs, settings: { ...state.prefs?.settings, ...prefs.settings } };
-    await cell(() => call("set_prefs", { prefs }));
-    applyThemeToggle(state.prefs.theme === "dark" ? "dark" : state.prefs.theme === "light" ? "light" : "dark");
+    try {
+      await call("set_prefs", { prefs });
+    } catch (error) {
+      ($("#set-msg") as HTMLElement).textContent = String((error as any).message || error);
+      ($("#set-msg") as HTMLElement).className = "error-text";
+      return;
+    }
+    state.editorDirty = false;
+    applyThemeToggle(resolveThemePreference(state.prefs.theme));
     ($("#set-msg") as HTMLElement).textContent = "Saved.";
+    ($("#set-msg") as HTMLElement).className = "success-text";
     await refreshTree();
   };
 }
@@ -2769,8 +3063,10 @@ async function renderAuthStatus() {
           ? `<p><button id="auth-signin" class="btn">Sign in with GitHub</button> <button id="auth-refresh" class="btn">Check again</button></p>`
           : `<p><button id="auth-refresh" class="btn">Check again</button></p>`);
     }
-    $("#auth-signin")!.onclick = () => renderSignIn(host, renderAuthStatus);
-    $("#auth-refresh")!.onclick = renderAuthStatus;
+    const signIn = $("#auth-signin") as HTMLButtonElement | null;
+    const refresh = $("#auth-refresh") as HTMLButtonElement | null;
+    if (signIn) signIn.onclick = () => renderSignIn(host, renderAuthStatus);
+    if (refresh) refresh.onclick = renderAuthStatus;
   });
 }
 
@@ -2784,7 +3080,7 @@ function wireTop() {
     else if (nav === "pages") showPagesView();
     else if (nav === "projects") showProjectsView();
     else if (nav === "allposts") showAllPostsView();
-    else if (nav === "newpost") openPostEditor(promptPageForPost(), null);
+    else if (nav === "newpost") openNewPostFromPrompt();
     else if (nav === "newpostpdf") void cell(newPostFromPdf);
     else if (nav === "settings") showSettings();
   };
@@ -2805,6 +3101,12 @@ function wireTop() {
   };
   document.querySelector(".sidebar-scrim")?.addEventListener("click", closeMobileSidebar);
   $("#new-page-btn")!.onclick = () => { if (confirmLeaveEditor()) openPageEditor(); };
+  $("#save-btn")!.onclick = () => {
+    if (state.editorSave && editorActive()) void cell(state.editorSave);
+  };
+  $("#preview-btn")!.onclick = () => {
+    if (editorActive()) void cell(doPreview);
+  };
   $("#publish-btn")!.onclick = openPublish;
   $("#settings-btn")!.onclick = () => { if (confirmLeaveEditor()) showSettings(); };
   $("#command-btn")!.onclick = () => void openCommandPalette();
@@ -2824,12 +3126,31 @@ function renderSidebarFiltered(q: string) {
   }
 }
 
-boot().then(() => {
+async function restoreInitialView() {
+  const last = String(state.prefs?.last_opened || "");
+  if (last.startsWith("post:")) {
+    const [, page, slug] = last.split(":");
+    if (page && slug && flattenPages().some((candidate) => candidate.slug === page)) {
+      await showPostView(page, slug);
+      if (state.view.kind === "post") return;
+    }
+  } else if (last.startsWith("page:")) {
+    const slug = last.slice("page:".length);
+    if (flattenPages().some((candidate) => candidate.slug === slug)) {
+      await showPageView(slug);
+      return;
+    }
+  }
   showDashboard();
+}
+
+boot().then(async () => {
   wireTop();
+  installSidebarResize();
   installShortcuts();
   installGlobalDrop();
   installTauriDrop();
+  await restoreInitialView();
 });
 
 window.addEventListener("beforeunload", (event) => {

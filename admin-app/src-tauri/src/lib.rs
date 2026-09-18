@@ -157,6 +157,12 @@ pub struct Preferences {
     #[serde(default)]
     pub last_opened: Option<String>,
     #[serde(default)]
+    pub default_page: Option<String>,
+    #[serde(default)]
+    pub collapsed_nodes: Vec<String>,
+    #[serde(default)]
+    pub property_panel_width: Option<f64>,
+    #[serde(default)]
     pub devlog_repo: Option<String>,
     #[serde(default)]
     pub window_state: Option<WindowStatePrefs>,
@@ -488,8 +494,8 @@ fn create_page(app: tauri::AppHandle, page: content::PageInput) -> Result<conten
 }
 
 #[tauri::command]
-fn update_page(app: tauri::AppHandle, page: content::PageInput) -> Result<(), AppError> {
-    with_repo(&app, None, |repo| content::update_page(repo, &page))
+fn update_page(app: tauri::AppHandle, original_slug: String, page: content::PageInput) -> Result<(), AppError> {
+    with_repo(&app, None, |repo| content::update_page(repo, &original_slug, &page))
 }
 
 #[tauri::command]

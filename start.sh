@@ -16,6 +16,7 @@
 # Usage: ./start.sh [app-args...]
 #        ./start.sh --version      # print the expected version and exit
 #        ./start.sh --force        # always rebuild, even if version matches
+#        ./start.sh --install      # build/install without launching
 
 set -euo pipefail
 
@@ -26,7 +27,11 @@ APP_DIR="$REPO_ROOT/admin-app"
 SRC_T="$APP_DIR/src-tauri"
 BIN_NAME="ahmarius-content-studio"
 TARGET_BIN="$SRC_T/target/release/$BIN_NAME"
-INSTALL_BIN="${AHMARIUS_BIN:-"$REPO_ROOT/bin/$BIN_NAME"}"
+USER_HOME_DIR="$(getent passwd "$(id -u)" | cut -d: -f6)"
+INSTALL_BIN="${AHMARIUS_BIN:-"$USER_HOME_DIR/.local/bin/$BIN_NAME"}"
+DATA_HOME_DIR="${XDG_DATA_HOME:-"$USER_HOME_DIR/.local/share"}"
+DESKTOP_TARGET="$DATA_HOME_DIR/applications/io.github.ahmarius.content-studio.desktop"
+ICON_TARGET="$DATA_HOME_DIR/icons/hicolor/256x256/apps/ahmarius-content-studio.png"
 VERSION_MARKER="$SRC_T/.build-version"
 
 # ---- tooling checks ----------------------------------------------------
@@ -80,6 +85,11 @@ install_binary() {
   mk_bin "$INSTALL_BIN"
   cp "$TARGET_BIN" "$INSTALL_BIN"
   chmod +x "$INSTALL_BIN"
+  echo "  installing desktop entry → $DESKTOP_TARGET"
+  mkdir -p "$(dirname "$DESKTOP_TARGET")" "$(dirname "$ICON_TARGET")"
+  sed "s|^Exec=.*$|Exec=$INSTALL_BIN|" "$APP_DIR/io.github.ahmarius.content-studio.desktop" > "$DESKTOP_TARGET"
+  cp "$APP_DIR/public/icons/icon.png" "$ICON_TARGET"
+  command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$(dirname "$DESKTOP_TARGET")" >/dev/null 2>&1 || true
 }
 
 launch() {
@@ -88,12 +98,16 @@ launch() {
 }
 
 # ---- main ---------------------------------------------------------------
-if [[ "${1:-}" == "--force" ]]; then
-  force_rebuild=1
-  shift
-else
-  force_rebuild=0
-fi
+force_rebuild=0
+install_only=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) force_rebuild=1; shift ;;
+    --install) install_only=1; force_rebuild=1; shift ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
 
 current_version="$(installed_version "$INSTALL_BIN")"
 
@@ -106,7 +120,7 @@ echo "  version changed (was: '${current_version:-none}') — installing & build
 
 # 1. frontend deps (idempotent: fast no-op when already up to date).
 echo "  installing npm dependencies…"
-(cd "$APP_DIR" && npm install --no-audit --no-fund)
+(cd "$APP_DIR" && npm ci --no-audit --no-fund)
 
 # 2. production build (tauri CLI enables the custom-protocol feature and embeds
 #    the frontend into the binary; plain `cargo build` produces a DEV build that
@@ -119,8 +133,13 @@ printf '%s' "$expected_version" > "$VERSION_MARKER"
 
 # 4. release build.
 echo "  building release binary…"
-(cd "$APP_DIR" && npx tauri build --no-bundle)
+(cd "$APP_DIR" && npx tauri build)
 
 install_binary
+
+if [[ $install_only -eq 1 ]]; then
+  echo "  installation complete"
+  exit 0
+fi
 
 launch "$INSTALL_BIN" "$@"

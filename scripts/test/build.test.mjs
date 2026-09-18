@@ -188,6 +188,25 @@ test('nested devlog pages reference working relative asset paths', async () => {
   assert.match(indexHtml, /href="\.\.\/assets\/css\/style\.css"/);
 });
 
+test('page hubs and page-post copies resolve shell assets and navigation from their real depth', async () => {
+  await runBuild({ mode: 'publish' });
+  const hubHtml = await fs.readFile(path.join(REPO, 'pages', FIXTURE_PAGE, 'index.html'), 'utf8');
+  const postHtml = await fs.readFile(path.join(REPO, 'pages', FIXTURE_PAGE, `${FIXTURE_POST}.html`), 'utf8');
+  for (const html of [hubHtml, postHtml]) {
+    assert.match(html, /href="\.\.\/\.\.\/assets\/css\/style\.css"/);
+    assert.match(html, /src="\.\.\/\.\.\/assets\/js\/script\.js"/);
+    assert.match(html, /href="\.\.\/\.\.\/index\.html"/);
+    assert.match(html, /data-index-url="\.\.\/\.\.\/search-index\.json"/);
+  }
+});
+
+test('page hubs expose linked breadcrumbs and computed last-updated dates', async () => {
+  await runBuild({ mode: 'publish' });
+  const hubHtml = await fs.readFile(path.join(REPO, 'pages', FIXTURE_SUBPAGE, 'index.html'), 'utf8');
+  assert.match(hubHtml, new RegExp(`<a[^>]+href="\.\./${FIXTURE_PAGE}/index\.html"[^>]*>Build fixture</a>`));
+  assert.match(hubHtml, /<time datetime="2026-09-01">2026-09-01<\/time>/);
+});
+
 test('nested sub-page post assets are copied and rewritten', async () => {
   await runBuild({ mode: 'publish' });
   const postHtml = await fs.readFile(path.join(REPO, 'devlog', `${FIXTURE_ASSET_POST}.html`), 'utf8');
@@ -303,12 +322,22 @@ test('post pages include OG/Twitter meta, JSON-LD, canonical, and search index e
   assert.match(postHtml, /class="post-print"/);
 });
 
-test('page-hub article copies use the Devlog canonical and article tools', async () => {
+test('page-hub article copies use their visible Page URL and article tools', async () => {
   await runBuild({ mode: 'publish' });
   const html = await fs.readFile(path.join(REPO, 'pages', FIXTURE_PAGE, `${FIXTURE_POST}.html`), 'utf8');
-  assert.match(html, new RegExp(`rel="canonical" href="https://ahmarius\\.github\\.io/devlog/${FIXTURE_POST}\\.html"`));
+  assert.match(html, new RegExp(`rel="canonical" href="https://ahmarius\\.github\\.io/pages/${FIXTURE_PAGE}/${FIXTURE_POST}\\.html"`));
+  assert.match(html, new RegExp(`data-url="/pages/${FIXTURE_PAGE}/${FIXTURE_POST}\\.html"`));
+  assert.match(html, new RegExp(`property="og:url" content="https://ahmarius\\.github\\.io/pages/${FIXTURE_PAGE}/${FIXTURE_POST}\\.html"`));
   assert.match(html, /class="post-actions"/);
   assert.match(html, /assets\/js\/post\.js/);
+});
+
+test('archive pages resolve shell assets from their two-directory depth', async () => {
+  await runBuild({ mode: 'publish' });
+  const html = await fs.readFile(path.join(REPO, 'devlog', 'tag', 'simulation.html'), 'utf8');
+  assert.match(html, /href="\.\.\/\.\.\/assets\/css\/style\.css"/);
+  assert.match(html, /src="\.\.\/\.\.\/assets\/js\/script\.js"/);
+  assert.match(html, /data-index-url="\.\.\/\.\.\/search-index\.json"/);
 });
 
 test('publish mode removes stale draft post pages from page hubs', async () => {

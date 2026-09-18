@@ -137,15 +137,29 @@
       frame.loading = "eager";
       frame.setAttribute("referrerpolicy", "no-referrer");
 
+      let loadTimer = window.setTimeout(() => {
+        loading.textContent = `The browser build is taking too long to load from ${game.index}.`;
+      }, 15000);
+
       frame.addEventListener("load", () => {
+        window.clearTimeout(loadTimer);
         loading.remove();
       });
 
       frame.addEventListener("error", () => {
+        window.clearTimeout(loadTimer);
         loading.textContent = `The browser build could not be loaded from ${game.index}.`;
       });
 
-      stage.appendChild(frame);
+      fetch(game.index, { method: "HEAD", cache: "no-store" })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          stage.appendChild(frame);
+        })
+        .catch(() => {
+          window.clearTimeout(loadTimer);
+          loading.textContent = `The browser build could not be loaded from ${game.index}.`;
+        });
 
       /*
        * Keep the game-player page self-contained.

@@ -36,6 +36,7 @@ to either client.
   one-time code valid for 10 minutes.
 - `POST /v1/pairings/claim` — exchanges the code for an opaque mobile session.
 - `GET /v1/tree` — lists canonical source files available to the remote editor.
+- `DELETE /v1/sessions/current` — immediately revokes the caller's session.
 - `GET|PUT|DELETE /v1/content/<canonical-content-path>` — mobile content
   access. Writes require the GitHub file SHA, so remote edits become visible as
   a conflict instead of being overwritten silently.

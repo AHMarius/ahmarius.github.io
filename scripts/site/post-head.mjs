@@ -14,13 +14,18 @@ export function umamiScript(config = {}) {
  * Per-post <head> extras: Open Graph, Twitter Card, JSON-LD BlogPosting +
  * BreadcrumbList, canonical.
  */
-export function postHeadExtras(post, { cover } = {}) {
-  const url = `${SITE_URL}/devlog/${post.slug}.html`;
+export function postHeadExtras(post, {
+  cover,
+  url = `${SITE_URL}/devlog/${post.slug}.html`,
+  sectionName = 'Devlog',
+  sectionUrl = `${SITE_URL}/devlog.html`,
+  titleSuffix = 'Devlog',
+} = {}) {
   const image = cover
     ? `${SITE_URL}/${String(cover).replace(/^\/+/, '')}`
     : `${SITE_URL}/assets/og/${post.slug}.png`;
   const excerpt = escapeAttribute(post.excerpt || post.title || '');
-  const title = escapeAttribute(`${post.title} — Devlog` || '');
+  const title = escapeAttribute(`${post.title} — ${titleSuffix}` || '');
   const datePublished = post.date || '';
   const dateModified = post.updatedDate || post.date || '';
 
@@ -44,7 +49,7 @@ export function postHeadExtras(post, { cover } = {}) {
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
-      { '@type': 'ListItem', position: 2, name: 'Devlog', item: `${SITE_URL}/devlog.html` },
+      { '@type': 'ListItem', position: 2, name: sectionName, item: sectionUrl },
       { '@type': 'ListItem', position: 3, name: post.title, item: url },
     ],
   });

@@ -212,13 +212,31 @@ select {
   min-height: 0;
 }
 
+:root {
+  --sidebar-width: 280px;
+}
+
 .sidebar {
-  flex: 0 0 280px;
+  flex: 0 0 var(--sidebar-width);
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--color-box-border);
   background-color: var(--color-bg-panel);
   min-height: 0;
+}
+
+.sidebar-resizer {
+  flex: 0 0 5px;
+  margin-left: -3px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 4;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:focus-visible {
+  background: var(--color-primary);
+  outline: none;
 }
 
 .sidebar-search {
@@ -274,6 +292,14 @@ select {
   text-align: center;
   color: var(--color-text-light);
   transition: transform var(--transition-fast);
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.tree-caret:disabled {
+  cursor: default;
+  opacity: 0;
 }
 
 .tree-label {

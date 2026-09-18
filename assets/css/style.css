@@ -962,7 +962,8 @@ nav {
 }
 
 .project-card:hover,
-.project-card:focus-within {
+.project-card:focus-within,
+.project-card.is-expanded {
   max-height: 2600px;
 
   background: var(--color-card-bg-hover);
@@ -975,8 +976,15 @@ nav {
 }
 
 .project-card:hover::after,
-.project-card:focus-within::after {
+.project-card:focus-within::after,
+.project-card.is-expanded::after {
   opacity: 0;
+}
+
+.project-expand-toggle {
+  margin-left: auto;
+  position: relative;
+  z-index: 1;
 }
 
 /* ======================================================================

@@ -42,10 +42,10 @@ function videoMarkdown(raw: string): string | null {
   return `<video src="${value}" controls preload="metadata"></video>`;
 }
 
-function assetMarkdown(relPath: string): string {
+function assetMarkdown(relPath: string, alt = ""): string {
   return /\.(?:mp4|webm|ogg|ogv)(?:[?#].*)?$/i.test(relPath)
     ? videoMarkdown(relPath) || ""
-    : `![](${relPath})`;
+    : `![${alt.replace(/[\]\\]/g, "")}](${relPath})`;
 }
 
 const wrap = (before: string, after: string) => {
@@ -70,6 +70,8 @@ export interface EditorHooks {
   importDropped?: (path: string) => Promise<string | null>;
   /** Resolve a post-local `assets/...` reference for live preview. */
   resolveAsset?: (relPath: string) => Promise<string | null>;
+  /** Persist editor mode changes made by the user. */
+  modeChanged?: (mode: EditorMode) => void;
 }
 
 export class Editor {
@@ -107,7 +109,7 @@ export class Editor {
         </div>
       </div>
       <div class="editor-body">
-        <textarea class="editor-source" spellcheck="false" placeholder="Write Markdown here…"></textarea>
+        <textarea class="editor-source" spellcheck="true" placeholder="Write Markdown here…"></textarea>
         <div class="editor-preview"></div>
       </div>
       <div class="editor-statusbar">
@@ -129,7 +131,7 @@ export class Editor {
 
     this.bindToolbar();
     this.bindEvents();
-    this.setMode(this._mode);
+    this.setMode(this._mode, false);
   }
 
   getElement(): HTMLElement {
@@ -139,11 +141,15 @@ export class Editor {
   private toolbarHtml(): string {
     const groups: Array<[string, string][]> = [
       [
+        ["Paragraph", "¶"],
         ["H1", "H1"],
         ["H2", "H2"],
         ["H3", "H3"],
+        ["H4", "H4"],
       ],
       [
+        ["Undo", "↶"],
+        ["Redo", "↷"],
         ["B", "B"],
         ["I", "I"],
         ["U", "U"],
@@ -166,13 +172,14 @@ export class Editor {
       [
         ["InlineMath", "$x$"],
         ["BlockMath", "$$"],
+        ["Clear", "Clear"],
       ],
     ];
     return groups
       .map(
         (g) =>
           `<div class="toolbar-group">${g
-            .map(([cmd, label]) => `<button type="button" data-cmd="${cmd}" title="${cmd}">${label}</button>`)
+            .map(([cmd, label]) => `<button type="button" data-cmd="${cmd}" title="${this.commandName(cmd)}" aria-label="${this.commandName(cmd)}">${label}</button>`)
             .join("")}</div>`,
       )
       .join("");
@@ -187,20 +194,29 @@ export class Editor {
   private runCommand(cmd: string) {
     const v = this.getValue();
     switch (cmd) {
+      case "Paragraph":
       case "H1":
       case "H2":
-      case "H3": {
-        const level = parseInt(cmd[1], 10);
+      case "H3":
+      case "H4": {
+        const level = cmd === "Paragraph" ? 0 : parseInt(cmd[1], 10);
         this.textarea.focus();
         const start = this.textarea.selectionStart;
         const lineStart = v.lastIndexOf("\n", start - 1) + 1;
         const lineEnd = v.indexOf("\n", start);
         const endIdx = lineEnd === -1 ? v.length : lineEnd;
         const line = v.slice(lineStart, endIdx).replace(/^#{1,6}\s+/, "");
-        const nl = `${"#".repeat(level)} ${line}`;
-        this.setTextValue(v.slice(0, lineStart) + nl + v.slice(endIdx));
+        const replacement = level ? `${"#".repeat(level)} ${line}` : line;
+        this.textarea.setRangeText(replacement, lineStart, endIdx, "select");
+        this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
         break;
       }
+      case "Undo":
+        document.execCommand("undo");
+        break;
+      case "Redo":
+        document.execCommand("redo");
+        break;
       case "B":
         wrap("**", "**");
         break;
@@ -233,7 +249,7 @@ export class Editor {
         this.setLinePrefix("> ");
         break;
       case "Rule":
-        setTextValueWith(this, v + (v.endsWith("\n") ? "" : "\n") + "\n---\n");
+        this.insertAtCursor("\n---\n");
         break;
       case "Link":
         this.promptLink("Link URL", (url) => wrap("[", `](${url})`));
@@ -258,6 +274,9 @@ export class Editor {
         this.textarea.focus();
         this.setBlock("$$\n", "\n$$");
         break;
+      case "Clear":
+        this.clearFormatting();
+        break;
     }
     this.refresh();
     this.onChange();
@@ -267,7 +286,10 @@ export class Editor {
     if (this.hooks.pickImage) {
       const rel = await this.hooks.pickImage();
       if (rel) {
-        this.insertAssetMarkdown(rel);
+        const fallback = rel.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ") || "Image";
+        const alt = window.prompt("Describe this image for screen-reader users:", fallback);
+        if (alt == null) return;
+        this.insertAssetMarkdown(rel, alt.trim() || fallback);
       }
       return;
     }
@@ -275,22 +297,57 @@ export class Editor {
   }
 
   private setBlock(before: string, after: string) {
-    const v = this.getValue();
-    setTextValueWith(this, v.trimEnd() + (v.endsWith("\n") || v === "" ? "" : "\n") + "\n" + before + after + "\n");
+    const start = this.textarea.selectionStart ?? this.getValue().length;
+    const end = this.textarea.selectionEnd ?? start;
+    const selected = this.getValue().slice(start, end);
+    this.textarea.setRangeText(`${before}${selected}${after}`, start, end, "select");
+    this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   private setLinePrefix(prefix: string) {
     this.textarea.focus();
     const start = this.textarea.selectionStart;
-    const lineStart = this.getValue().lastIndexOf("\n", start - 1) + 1;
-    const lineEnd = this.getValue().indexOf("\n", start);
-    const endIdx = lineEnd === -1 ? this.getValue().length : lineEnd;
-    const line = this.getValue().slice(lineStart, endIdx);
-    const newLine = line.startsWith(prefix) ? line.slice(prefix.length) : prefix + line;
-    setTextValueWith(
-      this,
-      this.getValue().slice(0, lineStart) + newLine + this.getValue().slice(endIdx),
-    );
+    const end = this.textarea.selectionEnd;
+    const value = this.getValue();
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    const nextBreak = value.indexOf("\n", end);
+    const lineEnd = nextBreak === -1 ? value.length : nextBreak;
+    const lines = value.slice(lineStart, lineEnd).split("\n");
+    const remove = lines.every((line) => line.startsWith(prefix));
+    const replacement = lines
+      .map((line, index) => {
+        if (remove) return line.slice(prefix.length);
+        if (prefix === "1. ") return `${index + 1}. ${line.replace(/^\d+\.\s+/, "")}`;
+        return prefix + line;
+      })
+      .join("\n");
+    this.textarea.setRangeText(replacement, lineStart, lineEnd, "select");
+    this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  private clearFormatting() {
+    const start = this.textarea.selectionStart;
+    const end = this.textarea.selectionEnd;
+    if (start === end) return;
+    const plain = this.getValue().slice(start, end)
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/^\s*(?:[-*+] |\d+\. |> |\[.\] )/gm, "")
+      .replace(/(\*\*|__|~~|`|<\/?u>)/g, "")
+      .replace(/(?<!\*)\*(?!\*)/g, "")
+      .replace(/(?<!_)_(?!_)/g, "");
+    this.textarea.setRangeText(plain, start, end, "select");
+    this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  private commandName(command: string): string {
+    const names: Record<string, string> = {
+      Paragraph: "Paragraph", H1: "Heading 1", H2: "Heading 2", H3: "Heading 3", H4: "Heading 4",
+      Undo: "Undo", Redo: "Redo", B: "Bold", I: "Italic", U: "Underline", S: "Strikethrough",
+      "`": "Inline code", "code-block": "Code block", List: "Bulleted list", Ol: "Numbered list",
+      Task: "Task list", Quote: "Block quote", Rule: "Horizontal rule", Link: "Link", Image: "Image",
+      Video: "Video", InlineMath: "Inline math", BlockMath: "Block math", Clear: "Clear formatting",
+    };
+    return names[command] || command;
   }
 
   private promptLink(title: string, cb: (url: string) => void) {
@@ -364,7 +421,8 @@ export class Editor {
           void file.arrayBuffer().then((buf) => {
             return this.hooks.importPasted!(file.name, buf).then((rel) => {
               if (!rel) return;
-              this.insertAtCursor(`![](${rel})`);
+              const alt = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ") || "Pasted image";
+              this.insertAtCursor(`![${alt.replace(/[\]\\]/g, "")}](${rel})`);
               this.refresh();
               this.onChange();
             });
@@ -387,7 +445,7 @@ export class Editor {
     if (this.focusMode) this.textarea.focus();
   }
 
-  setMode(mode: EditorMode) {
+  setMode(mode: EditorMode, notify = true) {
     this._mode = mode;
     this.root.classList.remove("mode-source", "mode-preview", "mode-split");
     this.root.classList.add(`mode-${mode}`);
@@ -397,6 +455,7 @@ export class Editor {
     if (mode === "source" || mode === "split") {
       this.textarea.focus();
     }
+    if (notify) this.hooks.modeChanged?.(mode);
   }
 
   getMode(): EditorMode {
@@ -435,9 +494,9 @@ export class Editor {
     this.textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  insertAssetMarkdown(relPath: string) {
+  insertAssetMarkdown(relPath: string, alt = "") {
     this.previewAssetCache.delete(relPath.replace(/^\.\//, ""));
-    const markdown = assetMarkdown(relPath);
+    const markdown = assetMarkdown(relPath, alt);
     if (markdown) this.insertAtCursor(markdown);
   }
 
@@ -457,7 +516,7 @@ export class Editor {
   private updateStats() {
     const md = this.getValue().trim();
     const words = md ? md.split(/\s+/).length : 0;
-    const minutes = Math.max(1, Math.round(words / 200));
+    const minutes = words === 0 ? 0 : Math.max(1, Math.round(words / 200));
     this.stats.textContent = `${words} words · ${minutes} min read`;
   }
 

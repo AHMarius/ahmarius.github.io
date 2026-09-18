@@ -86,13 +86,17 @@ export async function getPageTree(root = PAGES_ROOT, strict = false) {
       if (strict) assertValidMeta(path.join(p.dir, PAGE_FILE), issues, true);
       else console.warn(`[lint-warning] ${path.join(p.dir, PAGE_FILE)}: ${issues.join('; ')}`);
     }
+    const filesystemParent = p.parentPath ? p.parentPath.split('/').filter(Boolean).at(-1) : null;
+    const declaredParent = meta.parent || null;
     byKey.set(p.dir, {
       slug: p.slug,
       name: meta.name || meta.slug || p.slug,
       description: meta.description || '',
       cover: meta.cover || '',
       order: Number(meta.order ?? 100),
-      parent: meta.parent || p.parentPath || null,
+      parent: declaredParent || filesystemParent,
+      declaredParent,
+      filesystemParent,
       parentPath: p.parentPath || null,
       body,
       dir: p.dir,
@@ -104,6 +108,40 @@ export async function getPageTree(root = PAGES_ROOT, strict = false) {
 export async function buildPageHierarchy(root = PAGES_ROOT, strict = false) {
   const pages = await getPageTree(root, strict);
   const postsByPage = new Map();
+
+  const bySlugMap = new Map();
+  for (const page of pages) {
+    if (bySlugMap.has(page.slug)) {
+      throw new Error(`Duplicate page slug '${page.slug}' would collide in the public output.`);
+    }
+    bySlugMap.set(page.slug, page);
+  }
+  for (const page of pages) {
+    if (page.parent && !bySlugMap.has(page.parent)) {
+      throw new Error(`Parent page '${page.parent}' does not exist for '${page.slug}'.`);
+    }
+  }
+
+  const visiting = new Set();
+  const visited = new Set();
+  function verifyAcyclic(page, chain = []) {
+    if (visiting.has(page.slug)) {
+      throw new Error(`Page parent cycle: ${[...chain, page.slug].join(' -> ')}.`);
+    }
+    if (visited.has(page.slug)) return;
+    visiting.add(page.slug);
+    if (page.parent) verifyAcyclic(bySlugMap.get(page.parent), [...chain, page.slug]);
+    visiting.delete(page.slug);
+    visited.add(page.slug);
+  }
+  pages.forEach((page) => verifyAcyclic(page));
+  for (const page of pages) {
+    if (page.declaredParent && page.declaredParent !== page.filesystemParent) {
+      throw new Error(
+        `Page '${page.slug}' declares parent '${page.declaredParent}' but its filesystem parent is '${page.filesystemParent || '(root)'}'.`,
+      );
+    }
+  }
 
   for (const page of pages) {
     const postsDir = path.join(page.dir, POSTS_DIR);
@@ -145,17 +183,21 @@ export async function buildPageHierarchy(root = PAGES_ROOT, strict = false) {
     postsByPage.set(page.dir, list);
   }
 
-  const bySlugMap = new Map(pages.map((p) => [p.slug, p]));
+  const childrenByParent = new Map();
+  for (const page of pages) {
+    if (!page.parent) continue;
+    const children = childrenByParent.get(page.parent) || [];
+    children.push(page);
+    childrenByParent.set(page.parent, children);
+  }
 
-  function attach(page, parentPath) {
-    const children = [];
-    for (const other of pages) {
-      if (other.parent === page.slug) {
-        other.children = attach(other, `${parentPath}/${other.slug}`).sort(byOrder);
-        children.push(other);
-      }
-    }
-    return children;
+  function attach(page) {
+    const children = childrenByParent.get(page.slug) || [];
+    page.children = children.map((child) => {
+      attach(child);
+      return child;
+    }).sort(byOrder);
+    return page.children;
   }
 
   function byOrder(a, b) {
@@ -166,7 +208,7 @@ export async function buildPageHierarchy(root = PAGES_ROOT, strict = false) {
     .filter((p) => !p.parent)
     .sort(byOrder)
     .map((p) => {
-      p.children = attach(p, p.slug).sort(byOrder);
+      attach(p);
       return p;
     });
 

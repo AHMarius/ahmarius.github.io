@@ -3,6 +3,7 @@ import path from 'node:path';
 import { PAGES_ROOT } from './content/paths.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
 import { validatePostMeta, validatePageMeta } from './content/schema.mjs';
+import { buildPageHierarchy } from './content/pages.mjs';
 
 const ROOT = process.cwd();
 
@@ -105,6 +106,43 @@ async function walkContent(dir, pageSlug) {
   }
 }
 
+async function walkPage(pageDir) {
+  const pageYml = path.join(pageDir, 'page.yml');
+  let pageSlug = path.basename(pageDir);
+  try {
+    const raw = await fs.readFile(pageYml, 'utf8');
+    const { meta } = parseFrontmatter(raw);
+    pageSlug = meta.slug || pageSlug;
+    const pageRel = path.relative(ROOT, pageYml);
+    for (const message of validatePageMeta(meta)) {
+      report('error', pageRel, null, message);
+    }
+    if (meta.cover) {
+      const cover = String(meta.cover).replace(/^\/+/, '');
+      const candidate = cover.includes('/') ? path.join(ROOT, cover) : path.join(pageDir, cover);
+      try {
+        const stat = await fs.stat(candidate);
+        if (!stat.isFile()) throw new Error('not a file');
+      } catch {
+        report('error', pageRel, null, `Page cover does not exist: ${meta.cover}`);
+      }
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      report('error', path.relative(ROOT, pageDir), null, 'Page directory is missing page.yml.');
+    } else {
+      report('error', path.relative(ROOT, pageYml), null, `Could not read page metadata: ${error.message || error}`);
+    }
+  }
+
+  await walkContent(path.join(pageDir, 'posts'), pageSlug);
+  const subpagesDir = path.join(pageDir, 'subpages');
+  const children = await fs.readdir(subpagesDir, { withFileTypes: true }).catch(() => []);
+  for (const child of children) {
+    if (child.isDirectory()) await walkPage(path.join(subpagesDir, child.name));
+  }
+}
+
 async function main() {
   let pages;
   try {
@@ -117,20 +155,13 @@ async function main() {
   for (const entry of pages) {
     if (!entry.isDirectory()) continue;
     const pageDir = path.join(PAGES_ROOT, entry.name);
-    const pageYml = path.join(pageDir, 'page.yml');
-    try {
-      const raw = await fs.readFile(pageYml, 'utf8');
-      const { meta } = parseFrontmatter(raw);
-      const pageRel = path.relative(ROOT, pageYml);
-      for (const message of validatePageMeta(meta)) {
-        report('error', pageRel, null, message);
-      }
-    } catch {
-      if (entry.name !== 'index') {
-        report('error', path.relative(ROOT, pageDir), null, 'Page directory is missing page.yml.');
-      }
-    }
-    await walkContent(path.join(pageDir, 'posts'), entry.name);
+    await walkPage(pageDir);
+  }
+
+  try {
+    await buildPageHierarchy(PAGES_ROOT, true);
+  } catch (error) {
+    report('error', 'content/pages', null, String(error?.message || error));
   }
 
   // sort: errors first, then by file/line

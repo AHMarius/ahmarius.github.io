@@ -11,6 +11,13 @@ const MAX_CONTENT_BYTES = 8 * 1024 * 1024;
 const PAIRING_TTL_SECONDS = 10 * 60;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
+class HttpError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function json(value, status = 200, headers = {}) {
   return new Response(JSON.stringify(value), {
     status,
@@ -89,13 +96,13 @@ async function requireSession(request, env, headers) {
 
 async function readJson(request, limit = MAX_CONTENT_BYTES) {
   const length = Number(request.headers.get('content-length') || 0);
-  if (length > limit) throw new Error('Request body is too large.');
+  if (length > limit) throw new HttpError('Request body is too large.', 413);
   const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > limit) throw new Error('Request body is too large.');
+  if (new TextEncoder().encode(text).byteLength > limit) throw new HttpError('Request body is too large.', 413);
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error('Request body must be valid JSON.');
+    throw new HttpError('Request body must be valid JSON.', 400);
   }
 }
 
@@ -105,9 +112,19 @@ function allowedPath(value) {
   if (clean.split('/').some((part) => !part || part === '.' || part === '..' || part.includes('\\'))) return null;
   // Mobile sync only handles canonical source files. Generated site output and
   // workflow configuration stay desktop/CI owned, preventing remote takeover.
-  return clean === 'content/site-settings.json' || clean.startsWith('content/pages/') || clean.startsWith('content/projects/')
+  const canonical = clean === 'content/site-settings.json' || clean.startsWith('content/pages/') || clean.startsWith('content/projects/');
+  return canonical && /\.(?:md|ya?ml|json)$/i.test(clean)
     ? clean
     : null;
+}
+
+async function rateLimit(request, env, bucket, limit, windowSeconds, headers) {
+  const address = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown';
+  const key = `rate:${bucket}:${await sha256(address.split(',')[0].trim())}`;
+  const current = Number(await env.SYNC_STATE.get(key) || 0);
+  if (current >= limit) return error('Too many requests. Try again later.', 429, { ...headers, 'retry-after': String(windowSeconds) });
+  await env.SYNC_STATE.put(key, String(current + 1), { expirationTtl: windowSeconds });
+  return null;
 }
 
 function githubPath(path) {
@@ -239,6 +256,8 @@ async function contentTree(env, headers) {
 }
 
 async function createPairing(request, env, headers) {
+  const limited = await rateLimit(request, env, 'create-pairing', 10, 60, headers);
+  if (limited) return limited;
   const denied = await requireAdmin(request, env, headers);
   if (denied) return denied;
   const code = randomToken(9).toUpperCase().slice(0, 12);
@@ -248,6 +267,8 @@ async function createPairing(request, env, headers) {
 }
 
 async function claimPairing(request, env, headers) {
+  const limited = await rateLimit(request, env, 'claim-pairing', 12, 300, headers);
+  if (limited) return limited;
   const payload = await readJson(request, 16 * 1024);
   const code = String(payload.code || '').trim().toUpperCase();
   if (!/^[A-Z0-9_-]{8,16}$/.test(code)) return error('Invalid pairing code.', 400, headers);
@@ -279,6 +300,12 @@ export default {
         if (auth.response) return auth.response;
         return contentTree(env, headers);
       }
+      if (url.pathname === '/v1/sessions/current' && request.method === 'DELETE') {
+        const auth = await requireSession(request, env, headers);
+        if (auth.response) return auth.response;
+        await env.SYNC_STATE.delete(auth.key);
+        return json({ revoked: true }, 200, headers);
+      }
       if (url.pathname.startsWith('/v1/content/')) {
         const path = allowedPath(decodeURIComponent(url.pathname.slice('/v1/content/'.length)));
         if (!path) return error('This path is not available to mobile sync.', 403, headers);
@@ -288,6 +315,7 @@ export default {
       }
       return error('Not found.', 404, headers);
     } catch (cause) {
+      if (cause instanceof HttpError) return error(cause.message, cause.status, headers);
       console.error('sync gateway failure', cause);
       return error('The sync service could not complete the request.', 502, headers);
     }

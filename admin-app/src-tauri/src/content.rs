@@ -161,6 +161,7 @@ pub struct PostRow {
     pub technologies: Vec<String>,
     pub series: String,
     pub part: i64,
+    pub body: String,
     pub path: String,
 }
 
@@ -185,6 +186,10 @@ pub struct ContentNode {
     pub type_: String, // "page" | "post"
     pub slug: String,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub cover: String,
     pub status: String,
     pub path: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -414,26 +419,23 @@ fn atomic_write(path: &Path, content: &str) -> AppResult<()> {
 
 pub fn page_dir_of(repo: &Path, slug: &str) -> AppResult<PathBuf> {
     ensure_safe_slug(slug)?;
-    let top = resolve_in_repo(repo, &format!("content/pages/{}", slug))?;
-    if top.join(PAGE_FILE).exists() || top.join(POSTS_DIR).is_dir() {
-        return Ok(top);
+    let matches = find_page_dirs(repo, slug)?;
+    if matches.len() > 1 {
+        return Err(AppError::Validation(format!(
+            "Page slug '{}' is duplicated in the content hierarchy.",
+            slug
+        )));
     }
-    if let Some(sub) = find_subpage_dir(repo, slug)? {
-        return Ok(sub);
+    if let Some(found) = matches.into_iter().next() {
+        return Ok(found);
     }
-    Ok(top)
+    resolve_in_repo(repo, &format!("content/pages/{}", slug))
 }
 
-/// Find `content/pages/<parent>/subpages/<slug>` for a page whose slug lives
-/// under a sub-pages tree, returning its directory when present.
-///
-/// Without this, operations keyed on a sub-page's slug (read/update/delete,
-/// post lookup) would resolve to the non-existent top-level
-/// `content/pages/<slug>` and silently no-op.
-fn find_subpage_dir(repo: &Path, slug: &str) -> AppResult<Option<PathBuf>> {
+fn find_page_dirs(repo: &Path, slug: &str) -> AppResult<Vec<PathBuf>> {
     let root = resolve_in_repo(repo, "content/pages")?;
-    fn search(dir: &Path, slug: &str) -> Option<PathBuf> {
-        let entries = std::fs::read_dir(dir).ok()?;
+    fn search(dir: &Path, slug: &str, found: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
         for entry in entries.flatten() {
             let page = entry.path();
             if !page.is_dir() {
@@ -442,18 +444,17 @@ fn find_subpage_dir(repo: &Path, slug: &str) -> AppResult<Option<PathBuf>> {
             if entry.file_name().to_string_lossy() == slug
                 && (page.join(PAGE_FILE).exists() || page.join(POSTS_DIR).is_dir())
             {
-                return Some(page);
+                found.push(page.clone());
             }
             let children = page.join(SUBPAGES_DIR);
             if children.is_dir() {
-                if let Some(found) = search(&children, slug) {
-                    return Some(found);
-                }
+                search(&children, slug, found);
             }
         }
-        None
     }
-    Ok(search(&root, slug))
+    let mut found = Vec::new();
+    search(&root, slug, &mut found);
+    Ok(found)
 }
 
 pub fn list_pages(repo: &Path) -> AppResult<Vec<PageRow>> {
@@ -467,6 +468,16 @@ pub fn list_pages(repo: &Path) -> AppResult<Vec<PageRow>> {
             }
         }
     }
+    let mut seen = std::collections::HashSet::new();
+    for page in &out {
+        if !seen.insert(page.slug.clone()) {
+            return Err(AppError::Validation(format!(
+                "Page slug '{}' is duplicated in the content hierarchy.",
+                page.slug
+            )));
+        }
+    }
+    out.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.name.cmp(&b.name)));
     Ok(out)
 }
 
@@ -484,6 +495,12 @@ fn collect_page(repo: &Path, dir: &Path, out: &mut Vec<PageRow>) -> AppResult<()
         }
         // find parent from path segmentation
         let parent = find_parent_from_path(repo, dir);
+        if meta.parent != parent {
+            return Err(AppError::Validation(format!(
+                "Page '{}' declares parent {:?}, but its directory is under {:?}.",
+                slug, meta.parent, parent
+            )));
+        }
         out.push(PageRow {
             slug: meta.slug.clone().unwrap_or_else(|| slug.clone()),
             name: meta.name,
@@ -598,6 +615,12 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
         page.slug.clone()
     };
     ensure_safe_slug(&slug)?;
+    if !find_page_dirs(repo, &slug)?.is_empty() {
+        return Err(AppError::Validation(format!("Page already exists: {}", slug)));
+    }
+    if page.parent.as_deref() == Some(slug.as_str()) {
+        return Err(AppError::Validation("A page cannot be its own parent.".into()));
+    }
     let dir = match &page.parent {
         Some(p) if !p.is_empty() => {
             ensure_safe_slug(p)?;
@@ -644,13 +667,123 @@ pub fn create_page(repo: &Path, page: &PageInput) -> AppResult<PageRow> {
     })
 }
 
-pub fn update_page(repo: &Path, page: &PageInput) -> AppResult<()> {
+pub fn update_page(repo: &Path, original_slug: &str, page: &PageInput) -> AppResult<()> {
     let slug = ensure_safe_slug(&page.slug)?;
-    let dir = page_dir_of(repo, &slug)?;
-    if !dir.join(PAGE_FILE).exists() {
-        return Err(AppError::Validation(format!("Page not found: {}. Rename pages through the dedicated rename flow.", slug)));
+    let original_slug = ensure_safe_slug(original_slug)?;
+    let original_dir = page_dir_of(repo, &original_slug)?;
+    if !original_dir.join(PAGE_FILE).exists() {
+        return Err(AppError::Validation(format!("Page not found: {}.", original_slug)));
     }
-    atomic_write(&dir.join(PAGE_FILE), &serialize_page(page))?;
+    if page.parent.as_deref() == Some(slug.as_str())
+        || page.parent.as_deref() == Some(original_slug.as_str())
+    {
+        return Err(AppError::Validation("A page cannot be its own parent.".into()));
+    }
+    if slug != original_slug && !find_page_dirs(repo, &slug)?.is_empty() {
+        return Err(AppError::Validation(format!("Page already exists: {}", slug)));
+    }
+
+    let destination = match page.parent.as_deref().filter(|parent| !parent.is_empty()) {
+        Some(parent) => {
+            let parent = ensure_safe_slug(parent)?;
+            let parent_dir = page_dir_of(repo, &parent)?;
+            if !parent_dir.join(PAGE_FILE).exists() {
+                return Err(AppError::Validation(format!("Parent page does not exist: {}", parent)));
+            }
+            let original_canon = original_dir.canonicalize()?;
+            let parent_canon = parent_dir.canonicalize()?;
+            if parent_canon.starts_with(&original_canon) {
+                return Err(AppError::Validation("A page cannot be moved below one of its descendants.".into()));
+            }
+            parent_dir.join(SUBPAGES_DIR).join(&slug)
+        }
+        None => resolve_in_repo(repo, &format!("content/pages/{}", slug))?,
+    };
+
+    let moved = destination != original_dir;
+    if moved {
+        if destination.exists() {
+            return Err(AppError::Validation(format!("Page destination already exists: {}", slug)));
+        }
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&original_dir, &destination)?;
+    }
+    if let Err(error) = atomic_write(&destination.join(PAGE_FILE), &serialize_page(page)) {
+        if moved {
+            let _ = std::fs::rename(&destination, &original_dir);
+        }
+        return Err(error);
+    }
+    if slug != original_slug {
+        rewrite_direct_child_parents(&destination, &slug)?;
+        rewrite_direct_posts_page(&destination, &original_slug, &slug)?;
+        move_generated_page_assets(repo, &original_slug, &slug)?;
+    }
+    Ok(())
+}
+
+fn rewrite_direct_child_parents(page_dir: &Path, parent_slug: &str) -> AppResult<()> {
+    let children = page_dir.join(SUBPAGES_DIR);
+    let Ok(entries) = std::fs::read_dir(children) else { return Ok(()) };
+    for entry in entries.flatten() {
+        let file = entry.path().join(PAGE_FILE);
+        if !file.is_file() {
+            continue;
+        }
+        let raw = std::fs::read_to_string(&file)?;
+        let (meta, _) = parse_page_raw(&raw);
+        let input = PageInput {
+            name: meta.name,
+            slug: meta.slug.unwrap_or_else(|| entry.file_name().to_string_lossy().to_string()),
+            description: meta.description,
+            cover: meta.cover,
+            parent: Some(parent_slug.to_string()),
+            order: Some(meta.order),
+            kind: meta.kind,
+            devlog_repo: meta.devlog_repo,
+        };
+        atomic_write(&file, &serialize_page(&input))?;
+    }
+    Ok(())
+}
+
+fn rewrite_direct_posts_page(page_dir: &Path, old_slug: &str, new_slug: &str) -> AppResult<()> {
+    let posts = page_dir.join(POSTS_DIR);
+    let Ok(entries) = std::fs::read_dir(posts) else { return Ok(()) };
+    for entry in entries.flatten() {
+        let file = entry.path();
+        if file.extension().is_some_and(|extension| extension == "md") {
+            let raw = std::fs::read_to_string(&file)?;
+            let (mut meta, body) = parse_post(&raw);
+            if meta.page.is_empty() || meta.page == old_slug {
+                meta.page = new_slug.to_string();
+                atomic_write(&file, &serialize_post(&meta, &body))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn move_generated_page_assets(repo: &Path, old_slug: &str, new_slug: &str) -> AppResult<()> {
+    for prefix in ["assets/pages", "assets/posts", "pages"] {
+        let old = resolve_in_repo(repo, &format!("{}/{}", prefix, old_slug))?;
+        if !old.exists() {
+            continue;
+        }
+        let new = resolve_in_repo(repo, &format!("{}/{}", prefix, new_slug))?;
+        if new.exists() {
+            return Err(AppError::Validation(format!(
+                "Cannot rename generated path because it already exists: {}/{}",
+                prefix, new_slug
+            )));
+        }
+        if let Some(parent) = new.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(old, new)?;
+    }
     Ok(())
 }
 
@@ -950,22 +1083,6 @@ pub fn post_file_of(repo: &Path, page_slug: &str, post_slug: &str) -> AppResult<
     let direct = page_dir
         .join(POSTS_DIR)
         .join(format!("{}.md", post_slug));
-    if direct.exists() {
-        return Ok(direct);
-    }
-    if page_dir.join(SUBPAGES_DIR).is_dir() {
-        if let Ok(entries) = std::fs::read_dir(page_dir.join(SUBPAGES_DIR)) {
-            for entry in entries.flatten() {
-                let sub = entry.path();
-                if sub.is_dir() {
-                    let cand = sub.join(POSTS_DIR).join(format!("{}.md", post_slug));
-                    if cand.exists() {
-                        return Ok(cand);
-                    }
-                }
-            }
-        }
-    }
     Ok(direct)
 }
 
@@ -1005,7 +1122,7 @@ pub fn list_posts(repo: &Path) -> AppResult<Vec<PostRow>> {
 
 fn read_post_from_path(_repo: &Path, page_slug: &str, path: &Path) -> AppResult<PostRow> {
     let raw = std::fs::read_to_string(path)?;
-    let (meta, _body) = parse_post(&raw);
+    let (meta, body) = parse_post(&raw);
     let slug = if meta.slug.is_empty() {
         path.file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -1033,6 +1150,7 @@ fn read_post_from_path(_repo: &Path, page_slug: &str, path: &Path) -> AppResult<
         technologies: meta.technologies,
         series: meta.series,
         part: meta.part,
+        body,
         path: path.display().to_string(),
     })
 }
@@ -1102,8 +1220,8 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
         return Err(AppError::Validation("Post title must not be empty.".into()));
     }
     let status = if input.meta.status.is_empty() { "draft" } else { input.meta.status.as_str() };
-    if !matches!(status, "draft" | "published") {
-        return Err(AppError::Validation("Post status must be either draft or published.".into()));
+    if !matches!(status, "draft" | "published" | "archived") {
+        return Err(AppError::Validation("Post status must be draft, published, or archived.".into()));
     }
     let date = if input.meta.date.is_empty() { today.clone() } else { input.meta.date.clone() };
     if !is_iso_date(&date) {
@@ -1134,9 +1252,15 @@ pub fn write_post(repo: &Path, input: &PostInput) -> AppResult<String> {
         tags: input.meta.tags.clone(),
         technologies: input.meta.technologies.clone(),
     };
+    let page_dir = page_dir_of(repo, &page_slug)?;
+    if !page_dir.join(PAGE_FILE).is_file() {
+        return Err(AppError::Validation(format!(
+            "Page '{}' does not exist. Create or select a page before saving the post.",
+            page_slug
+        )));
+    }
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
-        ensure_page_meta(parent)?;
     }
     atomic_write(&file, &serialize_post(&meta, &input.body))?;
     if let Some(old_file) = original_file {
@@ -1243,63 +1367,94 @@ fn remove_generated(repo: &Path, rel: &str) -> AppResult<()> {
 /// page (and its posts) are visible both in the app tree and the published
 /// site. Without it a post could end up in an orphaned `<slug>/posts/` folder
 /// that has no `page.yml`, making the whole page invisible everywhere.
-fn ensure_page_meta(posts_dir: &Path) -> AppResult<()> {
-    let page_dir = match posts_dir.parent() {
-        Some(p) => p.to_path_buf(),
-        None => return Ok(()),
-    };
-    if page_dir.join(PAGE_FILE).exists() {
-        return Ok(());
-    }
-    let Some(slug) = page_dir.file_name().map(|s| s.to_string_lossy().to_string()) else {
-        return Ok(());
-    };
-    let input = PageInput {
-        name: slug.clone(),
-        slug: slug.clone(),
-        description: String::new(),
-        cover: String::new(),
-        parent: None,
-        order: None,
-        kind: String::new(),
-        devlog_repo: String::new(),
-    };
-    atomic_write(&page_dir.join(PAGE_FILE), &serialize_page(&input))?;
-    Ok(())
-}
-
 pub fn content_tree(repo: &Path) -> AppResult<Vec<ContentNode>> {
     let pages = list_pages(repo)?;
     let posts = list_posts(repo)?;
-    let mut nodes = vec![];
-    for page in pages {
-        let mut node = ContentNode {
+    let by_slug: std::collections::HashMap<String, PageRow> = pages
+        .iter()
+        .cloned()
+        .map(|page| (page.slug.clone(), page))
+        .collect();
+    let mut child_pages: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut roots = Vec::new();
+    for page in &pages {
+        if let Some(parent) = &page.parent {
+            if !by_slug.contains_key(parent) {
+                return Err(AppError::Validation(format!(
+                    "Page '{}' references missing parent '{}'.",
+                    page.slug, parent
+                )));
+            }
+            child_pages.entry(parent.clone()).or_default().push(page.slug.clone());
+        } else {
+            roots.push(page.slug.clone());
+        }
+    }
+    let order_slugs = |slugs: &mut Vec<String>| {
+        slugs.sort_by(|a, b| {
+            let left = &by_slug[a];
+            let right = &by_slug[b];
+            left.order.cmp(&right.order).then_with(|| left.name.cmp(&right.name))
+        });
+    };
+    order_slugs(&mut roots);
+    for children in child_pages.values_mut() {
+        order_slugs(children);
+    }
+
+    fn build_node(
+        slug: &str,
+        by_slug: &std::collections::HashMap<String, PageRow>,
+        child_pages: &std::collections::HashMap<String, Vec<String>>,
+        posts: &[PostRow],
+    ) -> ContentNode {
+        let page = &by_slug[slug];
+        let mut children: Vec<ContentNode> = child_pages
+            .get(slug)
+            .into_iter()
+            .flatten()
+            .map(|child| build_node(child, by_slug, child_pages, posts))
+            .collect();
+        let mut page_posts: Vec<&PostRow> = posts.iter().filter(|post| post.page == slug).collect();
+        page_posts.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.title.cmp(&b.title)));
+        children.extend(page_posts.into_iter().map(|post| ContentNode {
+            id: format!("{}:{}", page.slug, post.slug),
+            type_: "post".to_string(),
+            slug: post.slug.clone(),
+            name: post.title.clone(),
+            description: post.excerpt.clone(),
+            cover: String::new(),
+            status: post.status.clone(),
+            path: post.path.clone(),
+            kind: String::new(),
+            updated_date: if post.updated_date.is_empty() { post.date.clone() } else { post.updated_date.clone() },
+            children: Vec::new(),
+        }));
+        let updated_date = children
+            .iter()
+            .map(|child| child.updated_date.as_str())
+            .max()
+            .unwrap_or_default()
+            .to_string();
+        ContentNode {
             id: page.slug.clone(),
             type_: "page".to_string(),
             slug: page.slug.clone(),
             name: page.name.clone(),
+            description: page.description.clone(),
+            cover: page.cover.clone(),
             status: String::new(),
             path: page.path.clone(),
             kind: page.kind.clone(),
-            updated_date: String::new(),
-            children: Vec::new(),
-        };
-        for post in posts.iter().filter(|p| p.page == page.slug) {
-            node.children.push(ContentNode {
-                id: format!("{}:{}", page.slug, post.slug),
-                type_: "post".to_string(),
-                slug: post.slug.clone(),
-                name: post.title.clone(),
-                status: post.status.clone(),
-                path: post.path.clone(),
-                kind: String::new(),
-                updated_date: post.updated_date.clone(),
-                children: Vec::new(),
-            });
+            updated_date,
+            children,
         }
-        nodes.push(node);
     }
-    Ok(nodes)
+
+    Ok(roots
+        .iter()
+        .map(|slug| build_node(slug, &by_slug, &child_pages, &posts))
+        .collect())
 }
 
 // ---------- Media scan / orphan cleanup ----------
@@ -1887,9 +2042,9 @@ mod tests {
     }
 
     #[test]
-    fn write_post_into_unknown_page_provisions_page_meta() {
+    fn write_post_into_unknown_page_is_rejected() {
         let root = repo();
-        let slug = write_post(
+        let result = write_post(
             &root,
             &PostInput {
                 page_slug: "brand-new-page".to_string(),
@@ -1903,16 +2058,11 @@ mod tests {
                 },
                 body: "body".to_string(),
             },
-        )
-        .unwrap();
-        assert_eq!(slug, "hello");
-        // Writing a post into a never-created page must provision page.yml so
-        // the page is visible in the tree and on the published site.
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
         let page_dir = resolve_in_repo(&root, "content/pages/brand-new-page").unwrap();
-        assert!(page_dir.join("page.yml").exists());
-        assert!(std::fs::read_to_string(page_dir.join("page.yml")).unwrap().starts_with("---\n"));
-        let pages = list_pages(&root).unwrap();
-        assert!(pages.iter().any(|p| p.slug == "brand-new-page"));
+        assert!(!page_dir.join("page.yml").exists());
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -2278,6 +2428,7 @@ mod tests {
         let root = repo();
         let r = update_page(
             &root,
+            "ghost-page",
             &PageInput {
                 name: "Ghost".to_string(),
                 slug: "ghost-page".to_string(),
@@ -2291,6 +2442,117 @@ mod tests {
         );
         assert!(r.is_err());
         assert!(r.unwrap_err().to_string().contains("Page not found"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn duplicate_page_slug_is_rejected_globally() {
+        let root = repo();
+        create_page(
+            &root,
+            &PageInput {
+                name: "Second root".to_string(),
+                slug: "second-root".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: None,
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let duplicate = create_page(
+            &root,
+            &PageInput {
+                name: "Fluid duplicate".to_string(),
+                slug: "fluid-dynamics".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("second-root".to_string()),
+                order: None,
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        );
+        assert!(duplicate.is_err());
+        assert!(duplicate.unwrap_err().to_string().contains("already exists"));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn update_page_renames_and_moves_the_directory() {
+        let root = repo();
+        create_page(
+            &root,
+            &PageInput {
+                name: "Target".to_string(),
+                slug: "target".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: None,
+                order: Some(20),
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let old = resolve_in_repo(&root, "content/pages/fluid-dynamics").unwrap();
+        std::fs::write(old.join("posts").join("note.md"), "---\ntitle: Note\nslug: note\npage: fluid-dynamics\n---\n\nBody\n").unwrap();
+        update_page(
+            &root,
+            "fluid-dynamics",
+            &PageInput {
+                name: "Renamed".to_string(),
+                slug: "renamed".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("target".to_string()),
+                order: Some(5),
+                kind: "page".to_string(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        assert!(!old.exists());
+        let moved = resolve_in_repo(&root, "content/pages/target/subpages/renamed").unwrap();
+        assert!(moved.join(PAGE_FILE).exists());
+        assert!(std::fs::read_to_string(moved.join("posts").join("note.md")).unwrap().contains("page: \"renamed\""));
+        let page = read_page(&root, "renamed").unwrap();
+        assert_eq!(page["parent"], "target");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn content_tree_nests_pages_and_computes_page_updated_date() {
+        let root = repo();
+        create_page(
+            &root,
+            &PageInput {
+                name: "GPU Port".to_string(),
+                slug: "gpu-port".to_string(),
+                description: String::new(),
+                cover: String::new(),
+                parent: Some("fluid-dynamics".to_string()),
+                order: Some(1),
+                kind: String::new(),
+                devlog_repo: String::new(),
+            },
+        )
+        .unwrap();
+        let posts = page_dir_of(&root, "gpu-port").unwrap().join(POSTS_DIR);
+        std::fs::write(
+            posts.join("latest.md"),
+            "---\ntitle: Latest\nslug: latest\ndate: 2026-01-01\nupdatedDate: 2026-09-18\nstatus: published\n---\n\nBody\n",
+        )
+        .unwrap();
+        let tree = content_tree(&root).unwrap();
+        assert_eq!(tree.len(), 1);
+        let child = tree[0].children.iter().find(|node| node.type_ == "page").unwrap();
+        assert_eq!(child.slug, "gpu-port");
+        assert_eq!(child.children[0].type_, "post");
+        assert_eq!(child.updated_date, "2026-09-18");
+        assert_eq!(tree[0].updated_date, "2026-09-18");
         std::fs::remove_dir_all(&root).ok();
     }
 

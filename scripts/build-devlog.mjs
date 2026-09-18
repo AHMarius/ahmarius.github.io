@@ -6,7 +6,7 @@ import { renderMarkdown, truncateText, buildReadTime, headingsFromMarkdown, rewr
 import { postAssetsBase, copyAllPostAssets, removePostAssets } from './content/assets.mjs';
 import { pageShell, escapeHtml, escapeAttribute, depthPrefix } from './content/templates.mjs';
 import { parseFrontmatter } from './content/frontmatter.mjs';
-import { effectivePostStatus } from './content/metadata.mjs';
+import { buildUpdatedIndex, effectivePostStatus } from './content/metadata.mjs';
 import { validatePostMeta, assertValidMeta } from './content/schema.mjs';
 import {
   generateFeed,
@@ -165,12 +165,12 @@ async function loadPublishedPosts() {
   return loadAllPosts(true);
 }
 
-function cardMarkup(post, nested = false) {
-  const archiveDir = nested ? '' : 'devlog/';
+function cardMarkup(post, nested = false, archive = false) {
+  const archiveDir = archive ? '../' : nested ? '' : 'devlog/';
   const projectLabel = post.project
     ? `<a class="devlog-meta" href="${archiveDir}project/${archiveSlug(post.project)}.html">${escapeHtml(post.project)}</a>`
     : '';
-  const postHref = nested ? `${post.slug}.html` : `devlog/${post.slug}.html`;
+  const postHref = archive ? `../${post.slug}.html` : nested ? `${post.slug}.html` : `devlog/${post.slug}.html`;
   const pageLabel = post.pageName
     ? `<span class="devlog-meta devlog-page">${escapeHtml(post.pageName)}</span>`
     : '';
@@ -430,7 +430,7 @@ async function buildArchives(posts, devlogDir) {
     const slug = archiveSlug(label);
     const dir = path.join(devlogDir, kind);
     const file = path.join(dir, `${slug}.html`);
-    const cards = posts.filter((p) => (kind === 'tag' ? (p.tags || []).includes(label) : kind === 'tech' ? (p.technologies || []).includes(label) : p.project === label)).map((p) => cardMarkup(p, false)).join('\n');
+    const cards = posts.filter((p) => (kind === 'tag' ? (p.tags || []).includes(label) : kind === 'tech' ? (p.technologies || []).includes(label) : p.project === label)).map((p) => cardMarkup(p, false, true)).join('\n');
     const url = `/devlog/${kind}/${slug}.html`;
     return async () => {
       await fs.mkdir(dir, { recursive: true });
@@ -441,7 +441,7 @@ async function buildArchives(posts, devlogDir) {
         cssAssets: ['assets/css/style.css', 'assets/css/devlog.css', 'assets/css/pages.css', 'assets/css/katex.min.css'],
         jsAssets: ['assets/js/hero-fluid.js', 'assets/js/script.js', 'assets/js/devlog.js'],
         activeNav: 'devlog',
-        depth: 1,
+        depth: 2,
         content: `
           <header class="page-header devlog-header">
             <p class="section-eyebrow">${kind === 'tag' ? 'Tag' : kind === 'tech' ? 'Technology' : 'Project'} archive</p>
@@ -515,6 +515,8 @@ export async function buildDevlog(opts = {}) {
   await fs.writeFile(path.join(ROOT, 'sitemap.xml'), generateSitemap(published, { staticPages: ['index.html', 'projects.html', 'games.html', 'devlog.html', 'pages.html', 'about.html'], archives }), 'utf8');
   await fs.writeFile(path.join(ROOT, 'robots.txt'), generateRobotsTxt(), 'utf8');
   const searchPages = (await buildPageHierarchy(PAGES_ROOT, onlyPublished)).pages;
+  const pageUpdated = await buildUpdatedIndex(PAGES_ROOT);
+  searchPages.forEach((page) => { page.updatedDate = pageUpdated.get(page.slug) || ''; });
   await fs.writeFile(path.join(ROOT, 'search-index.json'), generateSearchIndex(published, { pages: searchPages }), 'utf8');
 
   // Open Graph images (SVG, no binary deps) for posts without a custom cover.

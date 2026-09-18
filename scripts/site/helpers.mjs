@@ -159,7 +159,7 @@ export function generateSearchIndex(posts, { pages = [] } = {}) {
     project: '',
     page: page.name,
     date: '',
-    updatedDate: '',
+    updatedDate: page.updatedDate || '',
     url: `/pages/${page.slug}/index.html`,
   }));
   entries.push(...pageEntries, ...staticEntries);

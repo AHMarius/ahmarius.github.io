@@ -13,9 +13,12 @@ function isoFrom(value) {
 /** Future-dated published posts behave like drafts until their publish date. */
 export function effectivePostStatus(status = 'draft', publishAt = '', now = Date.now()) {
   if (status !== 'published' || !publishAt) return status;
-  const at = new Date(String(publishAt).endsWith('Z') ? publishAt : `${publishAt}T00:00:00Z`);
-  if (Number.isNaN(at.getTime())) return status;
-  return at.getTime() <= now ? status : 'draft';
+  const value = String(publishAt);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return status;
+  const current = new Date(now);
+  if (Number.isNaN(current.getTime())) return status;
+  const today = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+  return value <= today ? status : 'draft';
 }
 
 export async function postDates(filePath) {
@@ -39,6 +42,13 @@ export function latestOf(...dates) {
 
 export async function computePageUpdatedDate(pageDir) {
   const dates = [];
+  try {
+    const { meta } = parseFrontmatter(await fs.readFile(path.join(pageDir, 'page.yml'), 'utf8'));
+    const ownDate = isoFrom(meta.updatedDate || meta.date);
+    if (ownDate) dates.push(ownDate);
+  } catch {
+    // Page metadata may be unavailable while a new page is being created.
+  }
   const postsDir = path.join(pageDir, 'posts');
   try {
     const entries = await fs.readdir(postsDir, { withFileTypes: true });
