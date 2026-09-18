@@ -2471,6 +2471,156 @@ body.search-modal-open {
 }
 
 /* ======================================================================
+   SITE ANNOUNCEMENT
+   Configured by Content Studio and loaded from a public-only build asset.
+   ====================================================================== */
+
+.site-announcement {
+  position: relative;
+  z-index: 900;
+  width: 100%;
+  margin-top: 70px;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-bg-navbar) 92%, var(--color-link) 8%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-link) 20%, var(--color-card-border));
+  box-shadow: 0 12px 32px rgba(20, 22, 26, 0.08);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  animation: site-announcement-in 0.32s ease both;
+}
+
+.site-announcement-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: min(1180px, 100%);
+  min-height: 52px;
+  margin-inline: auto;
+  padding: 10px 24px;
+  text-align: center;
+}
+
+.site-announcement-content p {
+  margin: 0;
+  color: color-mix(in srgb, var(--color-text) 84%, transparent);
+  font-size: 0.86rem;
+  font-weight: 620;
+  line-height: 1.45;
+}
+
+.site-announcement-marker {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-link);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-link) 12%, transparent);
+}
+
+.site-announcement-link {
+  flex: 0 0 auto;
+  color: var(--color-link-hover);
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  text-transform: uppercase;
+  border-bottom: 1px solid currentColor;
+}
+
+.site-announcement-link:hover {
+  color: var(--color-primary);
+}
+
+.site-announcement-dismiss {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid var(--color-card-border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-control-bg) 78%, transparent);
+  color: var(--color-text-light);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.site-announcement-dismiss:hover {
+  color: var(--color-primary);
+  border-color: var(--color-link);
+  transform: rotate(90deg);
+}
+
+.site-announcement ~ .hero {
+  min-height: calc(100vh - 122px);
+  padding-top: 76px;
+}
+
+.site-announcement ~ .page-header {
+  padding-top: 82px;
+}
+
+@keyframes site-announcement-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .site-announcement-content {
+    align-items: flex-start;
+    gap: 9px;
+    padding: 11px 16px;
+    text-align: left;
+  }
+
+  .site-announcement-marker {
+    margin-top: 0.42rem;
+  }
+
+  .site-announcement-content p {
+    flex: 1 1 auto;
+    font-size: 0.8rem;
+  }
+
+  .site-announcement-link {
+    align-self: center;
+    font-size: 0.7rem;
+  }
+
+  .site-announcement-dismiss {
+    width: 28px;
+    height: 28px;
+  }
+
+  .site-announcement ~ .hero {
+    min-height: auto;
+    padding-top: 48px;
+  }
+
+  .site-announcement ~ .page-header {
+    padding-top: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-announcement {
+    animation: none;
+  }
+}
+
+/* ======================================================================
    REDUCED MOTION
    ====================================================================== */
 

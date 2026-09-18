@@ -1,0 +1,9 @@
+{
+  "announcement": {
+    "enabled": true,
+    "text": "A new project breakdown is live in the engineering archive.",
+    "url": "/projects.html",
+    "link_label": "View projects",
+    "dismissible": true
+  }
+}

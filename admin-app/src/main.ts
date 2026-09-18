@@ -35,6 +35,11 @@ const state = {
   syncSession: null as SyncSession | null,
 };
 
+// Every view change invalidates outstanding async render work. Without this,
+// a slow page/project request can append its controls to whichever screen the
+// user navigated to while the request was in flight.
+let renderGeneration = 0;
+
 const $ = (sel: string, root: HTMLElement | Document = document): any =>
   root.querySelector(sel);
 const $$ = (sel: string, root: HTMLElement | Document = document): any[] =>
@@ -101,6 +106,7 @@ function editorActive(): boolean {
 /** Drop the editor bindings when leaving the post editor, so a later publish
  * / preview / Ctrl+S can't invoke a stale save closure against removed DOM. */
 function resetEditorState() {
+  renderGeneration += 1;
   resetSyncFileEditor();
   state.editor?.destroy();
   state.editor = null;
@@ -803,6 +809,18 @@ function wireCoverField(
   scope.querySelectorAll("[data-pick-cover]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const button = btn as HTMLButtonElement;
+      const kind = button.dataset.kind || "";
+      const target = resolveTarget();
+      const targetSlug = kind === "page" ? target.page : target.slug;
+      if (!targetSlug) {
+        const entity = kind === "project" ? "project" : kind === "page" ? "page" : "post";
+        const nameInput = scope.querySelector<HTMLInputElement>(
+          kind === "project" ? "#pr-name" : kind === "page" ? "#pe-name" : "#po-title",
+        );
+        setStatus(`Enter a ${entity} name or slug before choosing a cover image.`);
+        nameInput?.focus();
+        return;
+      }
       button.disabled = true;
       try {
         const picked = await call("pick_file", {
@@ -810,13 +828,14 @@ function wireCoverField(
           filterExts: ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"],
         });
         if (!picked) return;
-        const target = resolveTarget();
+        if (!scope.isConnected) return;
         const res: any = await call("import_cover", {
-          kind: button.dataset.kind,
+          kind,
           pageSlug: target.page,
           postSlug: target.slug,
           sourcePath: picked,
         });
+        if (!scope.isConnected) return;
         input.value = res.public_path;
         input.dispatchEvent(new Event("input", { bubbles: true }));
         await showCoverPreview(input, preview);
@@ -831,6 +850,7 @@ function wireCoverField(
 
 function showProjectsView() {
   resetEditorState();
+  const generation = renderGeneration;
   state.view = { kind: "projects" };
   const v = viewContent();
   v.innerHTML = "";
@@ -841,6 +861,7 @@ function showProjectsView() {
 
   cell(async () => {
     const portfolioProjects = await loadPortfolioProjects();
+    if (generation !== renderGeneration) return;
     state.portfolioProjects = portfolioProjects;
     const portfolioHeading = el("h2", "section-title", "Portfolio projects (database)");
     v.appendChild(portfolioHeading);
@@ -863,6 +884,7 @@ function showProjectsView() {
 
     v.appendChild(el("h2", "section-title", "Devlog project groups"));
     const projects = await refreshProjects();
+    if (generation !== renderGeneration) return;
     const grid = el("div", "cards-grid");
     state.projects.forEach((p: any) => {
       const card = el("article", "card page-card-c");
@@ -936,12 +958,13 @@ function showProjectsView() {
 
 function showPortfolioProject(slug: string) {
   resetEditorState();
+  const generation = renderGeneration;
   state.view = { kind: "page", slug };
   const v = viewContent();
   v.innerHTML = "";
   cell(async () => {
     const project = await loadPortfolioProject(slug);
-    if (!project) return;
+    if (!project || generation !== renderGeneration) return;
     const back = el("button", "btn", "← All projects");
     back.addEventListener("click", showProjectsView);
     v.appendChild(back);
@@ -980,12 +1003,13 @@ function showPortfolioProject(slug: string) {
 
 function showProjectView(slug: string) {
   resetEditorState();
+  const generation = renderGeneration;
   state.view = { kind: "page", slug };
   const v = viewContent();
   v.innerHTML = "";
   cell(async () => {
     const doc = await call("read_project", { slug });
-    if (!doc) return;
+    if (!doc || generation !== renderGeneration) return;
     v.appendChild(el("h1", "page-title", doc.name || slug));
     if (doc.cover) {
       const cover = el("div", "card-cover detail");
@@ -1026,6 +1050,7 @@ function showProjectView(slug: string) {
       }
     });
     const posts = await call("list_posts");
+    if (generation !== renderGeneration) return;
     const mine = (posts || []).filter((p: any) => p.project === slug);
     const list = el("div", "rows");
     mine.forEach((p: any) => {
@@ -1085,9 +1110,10 @@ function openProjectEditor(slug?: string | null) {
     "pr-cover-preview",
     () => ({
       page: "",
-      slug:
-        ($("#pr-slug") as HTMLInputElement).value.trim() ||
-        slugify(($("#pr-name") as HTMLInputElement).value.trim()),
+      slug: ($("#pr-slug") as HTMLInputElement).value.trim() ||
+        (($("#pr-name") as HTMLInputElement).value.trim()
+          ? slugify(($("#pr-name") as HTMLInputElement).value.trim())
+          : ""),
     }),
   );
   if (slug) {
@@ -1154,6 +1180,7 @@ const ap = { q: "", status: "", page: "", tag: "", sort: "updated-desc" };
 
 function showAllPostsView() {
   resetEditorState();
+  const generation = renderGeneration;
   state.view = { kind: "allposts" };
   const v = viewContent();
   v.innerHTML = "";
@@ -1184,6 +1211,7 @@ function showAllPostsView() {
 
   cell(async () => {
     const posts = await call("list_posts");
+    if (generation !== renderGeneration) return;
     state.posts = posts || [];
     apPopulateSelects();
     renderAllPosts();
@@ -1433,12 +1461,13 @@ async function deletePost(page: string, slug: string) {
 
 async function showPageView(slug: string) {
   resetEditorState();
+  const generation = renderGeneration;
   state.view = { kind: "page", slug };
   const v = viewContent();
   v.innerHTML = "";
   await cell(async () => {
     const doc = await call("read_page", { slug });
-    if (!doc) return;
+    if (!doc || generation !== renderGeneration) return;
     v.appendChild(el("h1", "page-title", doc.name || slug));
     if (doc.description) v.appendChild(el("p", "muted", doc.description));
     const actions = el("div", "card-actions");
@@ -1453,6 +1482,7 @@ async function showPageView(slug: string) {
     editPage.addEventListener("click", () => openPageEditor(slug));
     delPage.addEventListener("click", () => deletePage(slug));
     const posts = await call("list_posts");
+    if (generation !== renderGeneration) return;
     const mine = (posts || []).filter((p: any) => p.page === slug);
     const list = el("div", "rows");
     mine.forEach((p: any) => {
@@ -1512,7 +1542,9 @@ function openPageEditor(slug?: string | null, parent?: string | null) {
     () => {
       const sl =
         ($("#pe-slug") as HTMLInputElement).value.trim() ||
-        slugify(($("#pe-name") as HTMLInputElement).value.trim());
+        (($("#pe-name") as HTMLInputElement).value.trim()
+          ? slugify(($("#pe-name") as HTMLInputElement).value.trim())
+          : "");
       return { page: sl, slug: sl };
     },
   );
@@ -2024,14 +2056,14 @@ async function showPostView(page: string, slug: string) {
   }
 }
 
-async function doPreview() {
-  if (!editorActive() || state.previewing) return;
+async function doPreview(modeOverride?: "preview" | "publish") {
+  if (state.previewing) return;
   state.previewing = true;
   syncPostActions();
   try {
-    if (state.editorSave && !(await state.editorSave())) return;
+    if (editorActive() && state.editorSave && !(await state.editorSave())) return;
     setStatus("Building preview…");
-    const mode = state.prefs?.publish_mode === "publish" ? "publish" : "preview";
+    const mode = modeOverride || (state.prefs?.publish_mode === "publish" ? "publish" : "preview");
     if (mode === "publish") {
       // Publish-mode build: exact production output (drafts hidden).
       const built = await call("build_site", { mode: "publish" });
@@ -2069,7 +2101,7 @@ async function openCommandPalette() {
     { label: "New post", detail: "Create a draft", keywords: "write create", run: startNewPost },
     { label: "Pages", detail: "Manage site sections", keywords: "hubs sections", run: showPagesView },
     { label: "Projects", detail: "Manage portfolio projects", keywords: "portfolio", run: showProjectsView },
-    { label: "Build preview", detail: "Generate a local preview", keywords: "build site", run: () => void cell(doPreview) },
+    { label: "Build preview", detail: "Generate a local preview", keywords: "build site", run: () => void cell(() => doPreview("preview")) },
     { label: "Publish", detail: "Validate, commit, and deploy", keywords: "deploy github pages", run: openPublish },
     { label: "Settings", detail: "Publishing, analytics, and appearance", keywords: "preferences configuration", run: showSettings },
     { label: "Recover drafts", detail: "Review autosaved content", keywords: "autosave crash recovery", run: openRecoveryDashboard },
@@ -2738,6 +2770,40 @@ async function maybeShowRecoveryNotice(v: HTMLElement) {
 }
 
 // ---------- Settings ----------
+function announcementLinkIsSafe(value: string): boolean {
+  const raw = value.trim();
+  if (!raw) return true;
+  if (raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\")) return true;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function updateAnnouncementPreview(scope: HTMLElement) {
+  const enabled = ($("#set-announcement-enabled", scope) as HTMLInputElement).checked;
+  const text = ($("#set-announcement-text", scope) as HTMLTextAreaElement).value.trim();
+  const url = ($("#set-announcement-url", scope) as HTMLInputElement).value.trim();
+  const label = ($("#set-announcement-label", scope) as HTMLInputElement).value.trim() || "Learn more";
+  const dismissible = ($("#set-announcement-dismissible", scope) as HTMLInputElement).checked;
+  const preview = $("#set-announcement-preview", scope) as HTMLElement;
+  const count = $("#set-announcement-count", scope) as HTMLElement;
+  count.textContent = String(text.length);
+  preview.classList.toggle("is-disabled", !enabled);
+  preview.innerHTML = "";
+
+  const marker = el("span", "announcement-preview-marker");
+  marker.setAttribute("aria-hidden", "true");
+  const message = el("span", "announcement-preview-message", text || "Your announcement will appear here.");
+  const stateLabel = el("span", "announcement-preview-state", enabled ? "Enabled" : "Draft");
+  preview.append(marker, message);
+  if (url) preview.appendChild(el("span", "announcement-preview-link", announcementLinkIsSafe(url) ? label : "Invalid link"));
+  if (dismissible) preview.appendChild(el("span", "announcement-preview-dismiss", "×"));
+  preview.appendChild(stateLabel);
+}
+
 function showSettings() {
   resetEditorState();
   state.view = { kind: "settings" };
@@ -2769,6 +2835,22 @@ function showSettings() {
         <select id="set-syndicate"><option value="none">None</option><option value="mastodon">Mastodon</option><option value="bluesky">Bluesky</option></select>
       </label>
       <p class="muted">Optional: fires after the gh-pages snapshot has been deployed. It is not needed for GitHub Pages.</p>
+    </details>
+    <details class="settings-section" open>
+      <summary>Site announcement</summary>
+      <p class="muted">Show a short, optional banner across every public page after the next preview or publish build.</p>
+      <label class="check-label"><input id="set-announcement-enabled" type="checkbox"${state.prefs?.settings?.announcement_enabled ? " checked" : ""} /> Show announcement</label>
+      <label>Message
+        <textarea id="set-announcement-text" maxlength="180" rows="2" placeholder="What should visitors know?">${esc(state.prefs?.settings?.announcement_text || "")}</textarea>
+        <span class="field-help"><span id="set-announcement-count">0</span>/180 characters</span>
+      </label>
+      <div class="prop-grid">
+        <label>Optional link <input id="set-announcement-url" type="text" value="${esc(state.prefs?.settings?.announcement_url || "")}" placeholder="/projects.html or https://…" /></label>
+        <label>Link label <input id="set-announcement-label" type="text" maxlength="40" value="${esc(state.prefs?.settings?.announcement_link_label || "")}" placeholder="Learn more" /></label>
+      </div>
+      <label class="check-label"><input id="set-announcement-dismissible" type="checkbox"${state.prefs?.settings?.announcement_dismissible !== false ? " checked" : ""} /> Let visitors dismiss it</label>
+      <div id="set-announcement-preview" class="announcement-preview" aria-label="Announcement preview"></div>
+      <div class="card-actions"><button id="set-announcement-build" class="btn" type="button">Save &amp; build preview</button></div>
     </details>
     <details class="settings-section">
       <summary>Phone sync</summary>
@@ -2804,6 +2886,17 @@ function showSettings() {
   ($("#set-status") as HTMLSelectElement).value = state.prefs?.default_status || "draft";
   ($("#set-publish-mode") as HTMLSelectElement).value = state.prefs?.publish_mode || "publish";
   ($("#set-syndicate") as HTMLSelectElement).value = state.prefs?.settings?.syndicate_via || "none";
+  [
+    "#set-announcement-enabled",
+    "#set-announcement-text",
+    "#set-announcement-url",
+    "#set-announcement-label",
+    "#set-announcement-dismissible",
+  ].forEach((selector) => {
+    $(selector, form)!.addEventListener("input", () => updateAnnouncementPreview(form));
+    $(selector, form)!.addEventListener("change", () => updateAnnouncementPreview(form));
+  });
+  updateAnnouncementPreview(form);
   cell(async () => {
     const ver = await call("app_version");
     const vn = $("#set-version");
@@ -2850,7 +2943,7 @@ function showSettings() {
       message.className = "error-text";
     }
   };
-  $("#set-save")!.onclick = async () => {
+  const saveSettings = async (): Promise<boolean> => {
     const button = $("#set-save") as HTMLButtonElement;
     const message = $("#set-msg") as HTMLElement;
     const repo = ($("#set-repo") as HTMLInputElement).value.trim();
@@ -2868,6 +2961,11 @@ function showSettings() {
         umami_url: ($("#set-umami-url") as HTMLInputElement).value.trim() || null,
         umami_website_id: ($("#set-umami-id") as HTMLInputElement).value.trim() || null,
         sync_gateway_url: ($("#set-sync-url") as HTMLInputElement).value.trim() || null,
+        announcement_enabled: ($("#set-announcement-enabled") as HTMLInputElement).checked,
+        announcement_text: ($("#set-announcement-text") as HTMLTextAreaElement).value.trim() || null,
+        announcement_url: ($("#set-announcement-url") as HTMLInputElement).value.trim() || null,
+        announcement_link_label: ($("#set-announcement-label") as HTMLInputElement).value.trim() || null,
+        announcement_dismissible: ($("#set-announcement-dismissible") as HTMLInputElement).checked,
       },
     };
     button.disabled = true;
@@ -2875,6 +2973,12 @@ function showSettings() {
     message.textContent = "";
     message.className = "muted";
     try {
+      if (prefs.settings.announcement_enabled && !prefs.settings.announcement_text) {
+        throw new Error("Enter an announcement message before enabling the banner.");
+      }
+      if (prefs.settings.announcement_url && !announcementLinkIsSafe(prefs.settings.announcement_url)) {
+        throw new Error("Announcement links must use HTTPS or start with a single / for a site page.");
+      }
       if (repo) {
         const check = await call("check_repo", { repoPath: repo });
         if (!check?.is_repo) throw new Error("The selected folder is not a Git repository.");
@@ -2885,18 +2989,37 @@ function showSettings() {
       // available to the running UI as well as on disk.
       state.prefs = { ...state.prefs, ...prefs, settings: { ...state.prefs?.settings, ...prefs.settings } };
       applyThemeToggle(state.prefs.theme || "system");
-      message.textContent = "Settings saved.";
+      message.textContent = "Settings saved. Preview or publish to update the public site.";
       message.className = "success-text";
       setStatus("Settings saved");
       await refreshTree();
+      return true;
     } catch (error) {
       const detail = String((error as any).message || error);
       message.textContent = detail;
       message.className = "error-text";
       setStatus(detail);
+      return false;
     } finally {
       button.disabled = false;
       button.textContent = "Save Settings";
+    }
+  };
+  $("#set-save")!.onclick = () => void saveSettings();
+  $("#set-announcement-build")!.onclick = async () => {
+    const button = $("#set-announcement-build") as HTMLButtonElement;
+    button.disabled = true;
+    button.textContent = "Building…";
+    try {
+      if (!(await saveSettings())) return;
+      await doPreview("preview");
+      const message = $("#set-msg") as HTMLElement | null;
+      if (message) message.textContent = "Settings saved and preview build completed.";
+    } finally {
+      if (button.isConnected) {
+        button.disabled = false;
+        button.textContent = "Save & build preview";
+      }
     }
   };
 }

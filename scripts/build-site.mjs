@@ -3,6 +3,7 @@ import path from 'node:path';
 import { buildDevlog, parseMode, copyDistTree } from './build-devlog.mjs';
 import { buildPages } from './build-pages.mjs';
 import { buildProjects } from './projects-db.mjs';
+import { writePublicSiteSettings } from './site/site-settings.mjs';
 
 const ROOT = process.cwd();
 const KATEX_SOURCE = path.join(ROOT, 'node_modules', 'katex', 'dist', 'katex.min.css');
@@ -21,6 +22,7 @@ async function copyKatexAssets() {
 
 async function buildSite(mode = runMode) {
   await copyKatexAssets();
+  await writePublicSiteSettings(ROOT);
   const devlogResult = await buildDevlog({ copyDist: false, mode });
   const pagesResult = await buildPages({ mode });
   const projectsResult = await buildProjects();

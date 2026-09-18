@@ -1,5 +1,13 @@
+const publicSiteSettingsUrl = (() => {
+  const source = document.currentScript?.src;
+  return source
+    ? new URL("../site/site-settings.json", source).href
+    : "/assets/site/site-settings.json";
+})();
+
 document.addEventListener("DOMContentLoaded", () => {
   [
+    initSiteAnnouncement,
     initNavigation,
     initHamburgerMenu,
     initThemeToggle,
@@ -19,12 +27,105 @@ document.addEventListener("DOMContentLoaded", () => {
     initSiteSearch,
   ].forEach((initialize) => {
     try {
-      initialize();
+      const result = initialize();
+      if (result instanceof Promise) {
+        result.catch((error) => {
+          console.error(`Could not initialize ${initialize.name}:`, error);
+        });
+      }
     } catch (error) {
       console.error(`Could not initialize ${initialize.name}:`, error);
     }
   });
 });
+
+/* ------------------------------------------------------------------------
+ * Site announcement
+ * ------------------------------------------------------------------------ */
+
+function announcementStorageKey(announcement) {
+  const value = [announcement.text, announcement.url, announcement.link_label].join("|");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `site-announcement:${(hash >>> 0).toString(36)}`;
+}
+
+function safeAnnouncementUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  if (value.startsWith("/") && !value.startsWith("//")) {
+    return new URL(value, window.location.origin);
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+async function initSiteAnnouncement() {
+  const response = await fetch(publicSiteSettingsUrl, { cache: "no-store" });
+  if (!response.ok) return;
+  const config = await response.json();
+  const announcement = config?.announcement;
+  const text = String(announcement?.text || "").trim();
+  if (!announcement?.enabled || !text) return;
+
+  const storageKey = announcementStorageKey(announcement);
+  try {
+    if (localStorage.getItem(storageKey) === "dismissed") return;
+  } catch {}
+
+  const banner = document.createElement("aside");
+  banner.className = "site-announcement";
+  banner.setAttribute("aria-label", "Site announcement");
+
+  const content = document.createElement("div");
+  content.className = "site-announcement-content";
+  const marker = document.createElement("span");
+  marker.className = "site-announcement-marker";
+  marker.setAttribute("aria-hidden", "true");
+  const message = document.createElement("p");
+  message.textContent = text;
+  content.append(marker, message);
+
+  const url = safeAnnouncementUrl(announcement.url);
+  if (url) {
+    const link = document.createElement("a");
+    link.className = "site-announcement-link";
+    link.href = url.href;
+    link.textContent = String(announcement.link_label || "Learn more").trim() || "Learn more";
+    if (url.origin !== window.location.origin) {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+    content.appendChild(link);
+  }
+
+  if (announcement.dismissible !== false) {
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "site-announcement-dismiss";
+    dismiss.setAttribute("aria-label", "Dismiss announcement");
+    dismiss.textContent = "×";
+    dismiss.addEventListener("click", () => {
+      try {
+        localStorage.setItem(storageKey, "dismissed");
+      } catch {}
+      banner.remove();
+    });
+    content.appendChild(dismiss);
+  }
+
+  banner.appendChild(content);
+  const navigation = document.querySelector("body > nav");
+  if (navigation) navigation.insertAdjacentElement("afterend", banner);
+  else document.body.prepend(banner);
+}
 
 /* ------------------------------------------------------------------------
  * Respect prefers-reduced-motion: pause the decorative background video

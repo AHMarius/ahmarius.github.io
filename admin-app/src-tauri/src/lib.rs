@@ -184,6 +184,16 @@ pub struct SettingsJson {
     pub giscus_category_id: Option<String>,
     #[serde(default)]
     pub sync_gateway_url: Option<String>,
+    #[serde(default)]
+    pub announcement_enabled: bool,
+    #[serde(default)]
+    pub announcement_text: Option<String>,
+    #[serde(default)]
+    pub announcement_url: Option<String>,
+    #[serde(default)]
+    pub announcement_link_label: Option<String>,
+    #[serde(default)]
+    pub announcement_dismissible: Option<bool>,
 }
 
 struct AppState {
@@ -697,7 +707,7 @@ fn capture_screenshot(
 
 /// Native file picker. Returns an absolute path, or `null` if the user cancels.
 #[tauri::command]
-fn pick_file(
+async fn pick_file(
     app: tauri::AppHandle,
     filter_name: Option<String>,
     filter_exts: Option<Vec<String>>,
@@ -710,6 +720,10 @@ fn pick_file(
             builder = builder.add_filter(name, &refs);
         }
     }
+    // FileDialogBuilder's blocking API must not run in a synchronous Tauri
+    // command: that command executes on the event-loop thread and can freeze
+    // or terminate the WebView when the native chooser opens. Async commands
+    // are dispatched away from the main thread, as required by the dialog API.
     let file = builder.blocking_pick_file();
     Ok(file
         .and_then(|f| f.into_path().ok())

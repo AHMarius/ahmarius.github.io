@@ -1,4 +1,11 @@
 {
+  "announcement": {
+    "dismissible": true,
+    "enabled": false,
+    "link_label": null,
+    "text": null,
+    "url": null
+  },
   "giscus": {
     "category_id": null,
     "repo_id": null

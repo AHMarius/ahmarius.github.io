@@ -36,6 +36,11 @@ pub fn import_cover(
     post_slug: &str,
     source_path: &str,
 ) -> AppResult<CoverResult> {
+    if !matches!(kind, "project" | "page" | "post") {
+        return Err(AppError::Validation(format!(
+            "Unknown cover target: {kind}"
+        )));
+    }
     let source = PathBuf::from(source_path);
     if !source.is_file() {
         return Err(AppError::Validation(format!(
@@ -378,6 +383,17 @@ mod tests {
         assert_eq!(post.rel_path, "content/pages/software/posts/gpu-port/assets/cover.jpg");
         assert_eq!(post.public_path, "assets/posts/software/gpu-port/cover.jpg");
         assert!(root.join("content/pages/software/posts/gpu-port/assets/cover.jpg").is_file());
+
+        assert!(
+            import_cover(
+                &root,
+                "unknown",
+                "software",
+                "gpu-port",
+                src.to_str().unwrap()
+            )
+            .is_err()
+        );
 
         assert!(import_cover(&root, "post", "software", "gpu-port", "nope.txt").is_err());
         std::fs::remove_dir_all(&root).ok();
