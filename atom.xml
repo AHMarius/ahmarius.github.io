@@ -3,5 +3,11 @@
   <title>Devlog</title>
   <link href="https://ahmarius.github.io/feed.xml" rel="self" />
   <id>https://ahmarius.github.io/</id>
-
+  <entry>
+    <title>Test post 1</title>
+    <link href="https://ahmarius.github.io/devlog/test-post-1.html" />
+    <id>https://ahmarius.github.io/devlog/test-post-1.html</id>
+    <updated>2026-09-18T00:00:00.000Z</updated>
+    <summary>Test post 1</summary>
+  </entry>
 </feed>

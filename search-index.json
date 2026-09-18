@@ -1,5 +1,31 @@
 [
   {
+    "kind": "post",
+    "slug": "test-post-1",
+    "title": "Test post 1",
+    "excerpt": "Test post 1",
+    "tags": [],
+    "technologies": [],
+    "project": "",
+    "page": "auto",
+    "date": "2026-09-18",
+    "updatedDate": "2026-09-18",
+    "url": "/devlog/test-post-1.html"
+  },
+  {
+    "kind": "page",
+    "slug": "auto",
+    "title": "Beekeeper Story",
+    "excerpt": "The game I'm curently working on",
+    "tags": [],
+    "technologies": [],
+    "project": "",
+    "page": "Beekeeper Story",
+    "date": "",
+    "updatedDate": "",
+    "url": "/pages/auto/index.html"
+  },
+  {
     "kind": "site",
     "slug": "home",
     "title": "Home",
