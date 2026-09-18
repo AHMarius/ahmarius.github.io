@@ -2010,6 +2010,28 @@ footer {
 }
 
 /* ======================================================================
+   LAST UPDATED STAMP
+   ====================================================================== */
+
+#last-updated {
+  position: fixed;
+  right: 20px;
+  bottom: 10px;
+  z-index: 400;
+
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  line-height: 1;
+
+  color: var(--color-text-light);
+  opacity: 0.55;
+
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ======================================================================
    SCROLL PROGRESS BAR
    ====================================================================== */
 

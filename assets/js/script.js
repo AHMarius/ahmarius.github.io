@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initBackToTop();
   initScrollProgress();
   initRevealOnScroll();
+  initLastUpdated();
   initSiteSearch();
 });
 
@@ -797,6 +798,36 @@ function initGamesPage() {
 }
 
 document.addEventListener("DOMContentLoaded", initGamesPage);
+
+/* ------------------------------------------------------------------------
+ * Last updated stamp
+ *
+ * A small, muted "last updated at HH:MM on DD Mon YYYY" label pinned to
+ * the bottom-right corner. It reads the page's real last-modified time via
+ * document.lastModified, so the stamp stays current without manual
+ * maintenance on every page that loads this script.
+ * ------------------------------------------------------------------------ */
+
+function initLastUpdated() {
+  const parsed = new Date(document.lastModified || "");
+  const date = Number.isNaN(parsed.getTime())
+    ? new Date()
+    : parsed;
+
+  const pad = (value) => String(value).padStart(2, "0");
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+
+  const stamp = document.createElement("span");
+  stamp.id = "last-updated";
+  stamp.textContent =
+    `Last updated at ${pad(date.getHours())}:${pad(date.getMinutes())}` +
+    ` on ${pad(date.getDate())} ${months[date.getMonth()]} ${date.getFullYear()}`;
+
+  document.body.appendChild(stamp);
+}
 
 /* ------------------------------------------------------------------------
  * Site-wide search (JSON search index + overlay)
